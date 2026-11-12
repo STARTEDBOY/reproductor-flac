@@ -13,6 +13,7 @@ from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
     QFileDialog,
+    QGridLayout,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -550,3 +551,80 @@ class PlaylistPickerDialog(QDialog):
             self.error.setText("SELECCIONA AL MENOS UNA CANCIÓN")
             return
         self.accept()
+
+
+class TrackInfoDialog(QDialog):
+    """Muestra todos los datos disponibles de una pista."""
+
+    def __init__(self, track: Track, parent: QWidget | None = None):
+        super().__init__(parent)
+        self.setWindowTitle("Información de la pista")
+        self.setModal(True)
+        self.setMinimumWidth(540)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 16)
+        layout.setSpacing(10)
+
+        heading = QLabel(track.title)
+        heading.setObjectName("section")
+        heading.setWordWrap(True)
+        layout.addWidget(heading)
+
+        subtitle = QLabel(track.display_artist)
+        subtitle.setObjectName("artist")
+        subtitle.setWordWrap(True)
+        layout.addWidget(subtitle)
+
+        number = "—"
+        if track.tracknumber and track.discnumber:
+            number = f"Pista {track.tracknumber:02d} · Disco {track.discnumber}"
+        elif track.tracknumber:
+            number = f"Pista {track.tracknumber:02d}"
+        elif track.discnumber:
+            number = f"Disco {track.discnumber}"
+
+        rows = [
+            ("ÁLBUM", track.display_album),
+            ("ARTISTA DEL ÁLBUM", track.albumartist or "—"),
+            ("AÑO", track.year or "—"),
+            ("GÉNERO", track.genre or "—"),
+            ("NÚMERO", number),
+            ("DURACIÓN", format_time(track.duration)),
+            ("FORMATO", track.suffix.upper().lstrip(".") or "—"),
+            ("CALIDAD", track.quality or "—"),
+            ("PORTADA", "Sí" if track.has_cover else "No"),
+            ("ARCHIVO", track.path),
+        ]
+
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(18)
+        grid.setVerticalSpacing(7)
+        for row, (label, value) in enumerate(rows):
+            key = QLabel(label)
+            key.setObjectName("small")
+            key.setAlignment(
+                Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft
+            )
+            text = QLabel(value)
+            text.setWordWrap(True)
+            text.setTextInteractionFlags(
+                Qt.TextInteractionFlag.TextSelectableByMouse
+            )
+            if label == "ARCHIVO":
+                text.setObjectName("muted")
+            grid.addWidget(key, row, 0)
+            grid.addWidget(text, row, 1)
+        grid.setColumnStretch(1, 1)
+        layout.addLayout(grid)
+
+        buttons = QHBoxLayout()
+        buttons.addStretch(1)
+        close = QPushButton("CERRAR")
+        close.setObjectName("small")
+        close.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        close.clicked.connect(self.accept)
+        buttons.addWidget(close)
+        layout.addLayout(buttons)
+
+        close.setDefault(True)

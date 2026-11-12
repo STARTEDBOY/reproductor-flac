@@ -30,16 +30,19 @@ puedes usar **EXAMINAR…**), o ejecuta:
 - Clic en cualquier punto de la barra para saltar; también se puede arrastrar.
 - Modo aleatorio y repetición: desactivada, toda la lista o una pista.
 - Recuerda la última pista y el segundo exacto; al abrir se retoma en pausa.
-- Favoritos con corazón, vista **FAVORITOS** y botón **FAV** en el reproductor.
+- Favoritos con corazón y vista **FAVORITOS**; se marcan con el corazón de la
+  lista o con la tecla `F`.
 - Listas personalizadas: crea una lista, añade canciones concretas, quita y
   reordena. También puedes usar el clic derecho sobre una pista.
+- Clic derecho sobre una pista para ver toda su información: etiquetas, calidad
+  y ruta del archivo.
 - Temporizador de apagado: pausa la música o cierra el reproductor al terminar.
-- Tamaño de portada ajustable con los botones **−** y **+**.
 - Fondo **negro**, de **color libre** o con la **portada** de la canción actual.
-- Panel del reproductor a la **izquierda o a la derecha** con el botón **LADO**.
+- Panel del reproductor a la **izquierda o a la derecha** con el icono de intercambio.
+- Icono del ojo para **ocultar la biblioteca** y dejar solo **AHORA SUENA**.
 - Cambio de carpeta escribiendo, pegando o examinando una ruta.
 - Arrastra una carpeta sobre la ventana para cargarla.
-- Recuerda carpeta, volumen, geometría de la ventana, portada, fondo y modos.
+- Recuerda carpeta, volumen, geometría de la ventana, fondo y modos.
 
 ## Atajos
 
@@ -58,11 +61,12 @@ puedes usar **EXAMINAR…**), o ejecuta:
 | `Ctrl+F` | Buscar |
 | `Ctrl+O` | Cambiar carpeta |
 | `Ctrl+L` | Cambiar el reproductor de lado |
+| `Ctrl+H` | Ocultar o mostrar la biblioteca |
 | `F5` | Reescanear la biblioteca |
 | `Esc` | Volver a la lista |
 
 Doble clic o `Enter` sobre una pista para reproducirla. El clic derecho abre
-las opciones de favoritos y listas.
+las opciones de favoritos, listas e información de la pista.
 
 ## Requisitos
 
@@ -85,7 +89,7 @@ pip install --user PySide6 mutagen
 | `main.py` | Punto de entrada |
 | `ui.py` | Ventana, biblioteca, listas y reproducción |
 | `theme.py` | Estilos, fondo y sliders |
-| `dialogs.py` | Diálogos de carpeta, fondo, listas y temporizador |
+| `dialogs.py` | Diálogos de carpeta, fondo, listas, temporizador e información |
 | `library.py` | Escaneo de etiquetas y portadas |
 | `mpv_backend.py` | Comunicación con mpv por IPC |
 | `assets/fonts/` | Press Start 2P y VT323 |

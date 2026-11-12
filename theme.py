@@ -23,9 +23,6 @@ from PySide6.QtWidgets import (
 )
 
 DEFAULT_COVER_SIZE = 320
-MIN_COVER_SIZE = 180
-MAX_COVER_SIZE = 340
-COVER_STEP = 20
 
 STYLE_TEMPLATE = """
 * { outline: none; }
@@ -146,15 +143,8 @@ QPushButton#small {
     font-size: 8px;
     padding: 7px 8px;
 }
-QPushButton#fav {
-    font-family: 'Press Start 2P';
-    font-size: 8px;
-    padding: 4px 7px;
-}
-QPushButton#fav:hover {
-    background-color: %(input_bg)s;
-    color: %(text)s;
-    border-color: %(text)s;
+QPushButton#icon {
+    padding: 0;
 }
 QPushButton#transport { font-size: 22px; padding: 4px 8px; }
 QPushButton#play {
@@ -398,6 +388,164 @@ def heart_pixmap(size: int, filled: bool, color: str = "#ffffff") -> QPixmap:
                 )
     painter.end()
     return pixmap
+
+
+# Iconos pixel art de los controles. Todos miden 11 x 9 celdas.
+PIXEL_SHUFFLE = (
+    "#.........#",
+    "##.......##",
+    ".##.....##.",
+    "..##...##..",
+    "...##.##...",
+    "....###....",
+    "...##.##...",
+    "..##...##..",
+    ".##.....##.",
+)
+
+PIXEL_REPEAT = (
+    "..#######..",
+    ".#.......#.",
+    "#.......###",
+    "#.........#",
+    "#.........#",
+    "#.........#",
+    "###.......#",
+    ".#.......#.",
+    "..#######..",
+)
+
+PIXEL_REPEAT_ONE = (
+    "..#######..",
+    ".#.......#.",
+    "#.......###",
+    "#....#....#",
+    "#...##....#",
+    "#....#....#",
+    "###..#....#",
+    ".#.......#.",
+    "..#######..",
+)
+
+PIXEL_MOON = (
+    "...####....",
+    "..#####....",
+    ".#####.....",
+    "#####......",
+    "#####......",
+    "#####......",
+    ".#####.....",
+    "..#####....",
+    "...####....",
+)
+
+PIXEL_SUN = (
+    ".....#.....",
+    ".#...#...#.",
+    "..#.....#..",
+    "...#####...",
+    ".#.#####.#.",
+    "...#####...",
+    "..#.....#..",
+    ".#...#...#.",
+    ".....#.....",
+)
+
+PIXEL_SWAP = (
+    ".......##..",
+    "#########..",
+    ".......##..",
+    "...........",
+    "...........",
+    "...........",
+    "..##.......",
+    "..#########",
+    "..##.......",
+)
+
+PIXEL_EYE = (
+    "...........",
+    "...#####...",
+    "..#.....#..",
+    ".#..###..#.",
+    "#...###...#",
+    ".#..###..#.",
+    "..#.....#..",
+    "...#####...",
+    "...........",
+)
+
+
+def _slash_rows(rows: tuple[str, ...]) -> tuple[str, ...]:
+    grid = [list(row) for row in rows]
+    for index in range(min(len(grid), len(grid[0]))):
+        grid[index][index] = "#"
+    return tuple("".join(row) for row in grid)
+
+
+PIXEL_EYE_OFF = _slash_rows(PIXEL_EYE)
+
+
+@lru_cache(maxsize=128)
+def pixel_pixmap(
+    rows: tuple[str, ...],
+    size: int,
+    color: str = "#ffffff",
+) -> QPixmap:
+    """Dibuja una rejilla de píxeles con celdas cuadradas, sin suavizar."""
+    size = max(6, int(size))
+    height = len(rows)
+    width = len(rows[0])
+    cells = [[char == "#" for char in row] for row in rows]
+
+    cell = max(1, round(size / max(width, height)))
+    side = max(width, height) * cell
+    pixmap = QPixmap(side, side)
+    pixmap.fill(Qt.GlobalColor.transparent)
+
+    painter = QPainter(pixmap)
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(QColor(color))
+    offset_x = (side - width * cell) // 2
+    offset_y = (side - height * cell) // 2
+    for y, row in enumerate(cells):
+        for x, on in enumerate(row):
+            if on:
+                painter.drawRect(
+                    offset_x + x * cell,
+                    offset_y + y * cell,
+                    cell,
+                    cell,
+                )
+    painter.end()
+    return pixmap
+
+
+def pixel_icon(rows: tuple[str, ...], size: int = 20) -> QIcon:
+    """Icono blanco normal, negro al pasar el ratón o al quedar activo."""
+    icon = QIcon()
+    for factor in (1, 2, 3):
+        scaled = size * factor
+        for state, color in (
+            (QIcon.State.Off, "#ffffff"),
+            (QIcon.State.On, "#000000"),
+        ):
+            icon.addPixmap(
+                pixel_pixmap(rows, scaled, color),
+                QIcon.Mode.Normal,
+                state,
+            )
+            icon.addPixmap(
+                pixel_pixmap(rows, scaled, "#000000"),
+                QIcon.Mode.Active,
+                state,
+            )
+        icon.addPixmap(
+            pixel_pixmap(rows, scaled, "#6a6a6a"),
+            QIcon.Mode.Disabled,
+            QIcon.State.Off,
+        )
+    return icon
 
 
 class Backdrop(QWidget):

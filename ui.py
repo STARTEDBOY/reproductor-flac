@@ -45,6 +45,7 @@ from dialogs import (
     NameDialog,
     PlaylistPickerDialog,
     SleepDialog,
+    TrackInfoDialog,
 )
 from library import (
     Track,
@@ -55,16 +56,22 @@ from library import (
 )
 from mpv_backend import MpvController
 from theme import (
-    COVER_STEP,
     DEFAULT_COVER_SIZE,
-    MAX_COVER_SIZE,
-    MIN_COVER_SIZE,
+    PIXEL_EYE,
+    PIXEL_EYE_OFF,
+    PIXEL_MOON,
+    PIXEL_REPEAT,
+    PIXEL_REPEAT_ONE,
+    PIXEL_SHUFFLE,
+    PIXEL_SUN,
+    PIXEL_SWAP,
     Backdrop,
     ClickSlider,
     app_icon,
     build_style,
     heart_icon,
     load_fonts,
+    pixel_icon,
 )
 
 
@@ -108,9 +115,7 @@ class MainWindow(QMainWindow):
         if self.repeat not in ("off", "all", "one"):
             self.repeat = "off"
 
-        self.cover_size = self._clamp_cover(
-            int(self.settings.value("cover_size", DEFAULT_COVER_SIZE))
-        )
+        self.cover_size = DEFAULT_COVER_SIZE
         self.bg_mode = str(self.settings.value("background_mode", "black") or "black")
         if self.bg_mode not in ("black", "color", "cover"):
             self.bg_mode = "black"
@@ -123,6 +128,7 @@ class MainWindow(QMainWindow):
         self.player_on_left = str(
             self.settings.value("player_side", "right") or "right"
         ) == "left"
+        self.library_hidden = False
 
         stored_favorites = self.settings.value("favorites", [])
         if isinstance(stored_favorites, str):
@@ -174,10 +180,6 @@ class MainWindow(QMainWindow):
         QTimer.singleShot(300, self._open_initial_library)
 
     # ------------------------------------------------------------------ UI
-    def _clamp_cover(self, value: int) -> int:
-        value = int(round(value / COVER_STEP) * COVER_STEP)
-        return max(MIN_COVER_SIZE, min(MAX_COVER_SIZE, value))
-
     def _build_ui(self) -> None:
         self.backdrop = Backdrop()
         self.setCentralWidget(self.backdrop)
@@ -190,15 +192,43 @@ class MainWindow(QMainWindow):
         self._apply_panel_order()
 
     def _apply_panel_order(self) -> None:
-        """Coloca el reproductor a la izquierda o a la derecha de la lista."""
-        self.outer.removeWidget(self.library_panel)
-        self.outer.removeWidget(self.player_panel)
+        """Coloca el reproductor a la izquierda, a la derecha o centrado."""
+        while self.outer.count():
+            self.outer.takeAt(0)
+        if self.library_hidden:
+            self.outer.addStretch(1)
+            self.outer.addWidget(self.player_panel, 0)
+            self.outer.addStretch(1)
+            return
         if self.player_on_left:
             self.outer.addWidget(self.player_panel, 0)
             self.outer.addWidget(self.library_panel, 1)
         else:
             self.outer.addWidget(self.library_panel, 1)
             self.outer.addWidget(self.player_panel, 0)
+
+    def _update_library_button(self) -> None:
+        if self.library_hidden:
+            self.hide_library_btn.setIcon(pixel_icon(PIXEL_EYE_OFF))
+            self.hide_library_btn.setToolTip(
+                "Mostrar la biblioteca (Ctrl+H)"
+            )
+        else:
+            self.hide_library_btn.setIcon(pixel_icon(PIXEL_EYE))
+            self.hide_library_btn.setToolTip(
+                "Ocultar la biblioteca y dejar solo AHORA SUENA (Ctrl+H)"
+            )
+
+    def _toggle_library(self) -> None:
+        self.library_hidden = not self.library_hidden
+        self.library_panel.setVisible(not self.library_hidden)
+        self._apply_panel_order()
+        self._update_library_button()
+        self.state_label.setText(
+            "BIBLIOTECA OCULTA"
+            if self.library_hidden
+            else "BIBLIOTECA VISIBLE"
+        )
 
     def _side_tooltip(self) -> str:
         target = "derecha" if self.player_on_left else "izquierda"
@@ -232,9 +262,12 @@ class MainWindow(QMainWindow):
         self.count_label.setAlignment(
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
         )
-        self.side_btn = QPushButton("LADO")
-        self.side_btn.setObjectName("small")
+        self.side_btn = QPushButton()
+        self.side_btn.setObjectName("icon")
+        self.side_btn.setFixedSize(38, 30)
         self.side_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.side_btn.setIconSize(QSize(20, 20))
+        self.side_btn.setIcon(pixel_icon(PIXEL_SWAP))
         self.side_btn.setToolTip(self._side_tooltip())
         header.addWidget(title)
         header.addStretch(1)
@@ -406,35 +439,16 @@ class MainWindow(QMainWindow):
         now.setObjectName("section")
         top.addWidget(now)
         top.addStretch(1)
-        cover_caption = QLabel("PORTADA")
-        cover_caption.setObjectName("small")
-        top.addWidget(cover_caption)
-        self.cover_minus = QPushButton("−")
-        self.cover_minus.setObjectName("small")
-        self.cover_minus.setFixedWidth(28)
-        self.cover_minus.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.cover_minus.setToolTip("Portada más pequeña")
-        self.cover_size_label = QLabel(str(self.cover_size))
-        self.cover_size_label.setObjectName("small")
-        self.cover_size_label.setFixedWidth(30)
-        self.cover_size_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.cover_plus = QPushButton("+")
-        self.cover_plus.setObjectName("small")
-        self.cover_plus.setFixedWidth(28)
-        self.cover_plus.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.cover_plus.setToolTip("Portada más grande")
-        self.fav_btn = QPushButton("FAV")
-        self.fav_btn.setObjectName("fav")
-        self.fav_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.fav_btn.setIconSize(QSize(11, 11))
-        self.fav_btn.setIcon(heart_icon(11, False))
-        self.fav_btn.setToolTip("Marcar la canción actual como favorita (F)")
-        self.fav_btn.setEnabled(False)
-        top.addWidget(self.cover_minus)
-        top.addWidget(self.cover_size_label)
-        top.addWidget(self.cover_plus)
-        top.addSpacing(4)
-        top.addWidget(self.fav_btn)
+        self.hide_library_btn = QPushButton()
+        self.hide_library_btn.setObjectName("icon")
+        self.hide_library_btn.setFixedSize(38, 30)
+        self.hide_library_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.hide_library_btn.setIconSize(QSize(20, 20))
+        self.hide_library_btn.setIcon(pixel_icon(PIXEL_EYE))
+        self.hide_library_btn.setToolTip(
+            "Ocultar la biblioteca y dejar solo AHORA SUENA (Ctrl+H)"
+        )
+        top.addWidget(self.hide_library_btn)
         layout.addLayout(top)
 
         self.cover_label = QLabel()
@@ -492,10 +506,13 @@ class MainWindow(QMainWindow):
 
         controls = QHBoxLayout()
         controls.setSpacing(6)
-        self.shuffle_btn = QPushButton("ALEAT")
-        self.shuffle_btn.setObjectName("small")
+        self.shuffle_btn = QPushButton()
+        self.shuffle_btn.setObjectName("icon")
+        self.shuffle_btn.setFixedSize(38, 38)
         self.shuffle_btn.setCheckable(True)
         self.shuffle_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.shuffle_btn.setIconSize(QSize(20, 20))
+        self.shuffle_btn.setIcon(pixel_icon(PIXEL_SHUFFLE))
         self.shuffle_btn.setToolTip("Reproducción aleatoria (S)")
         self.prev_btn = QPushButton("<<")
         self.prev_btn.setObjectName("transport")
@@ -510,10 +527,13 @@ class MainWindow(QMainWindow):
         self.next_btn.setObjectName("transport")
         self.next_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.next_btn.setToolTip("Siguiente (N)")
-        self.repeat_btn = QPushButton("REP: NO")
-        self.repeat_btn.setObjectName("small")
+        self.repeat_btn = QPushButton()
+        self.repeat_btn.setObjectName("icon")
+        self.repeat_btn.setFixedSize(38, 38)
         self.repeat_btn.setCheckable(True)
         self.repeat_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.repeat_btn.setIconSize(QSize(20, 20))
+        self.repeat_btn.setIcon(pixel_icon(PIXEL_REPEAT))
         self.repeat_btn.setToolTip("Repetir: no / toda la lista / una pista (R)")
         controls.addWidget(self.shuffle_btn)
         controls.addWidget(self.prev_btn)
@@ -546,13 +566,20 @@ class MainWindow(QMainWindow):
 
         tools = QHBoxLayout()
         tools.setSpacing(8)
-        self.sleep_btn = QPushButton("DORMIR")
-        self.sleep_btn.setObjectName("small")
+        self.sleep_btn = QPushButton()
+        self.sleep_btn.setObjectName("icon")
+        self.sleep_btn.setFixedSize(38, 32)
+        self.sleep_btn.setCheckable(True)
         self.sleep_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.sleep_btn.setIconSize(QSize(20, 20))
+        self.sleep_btn.setIcon(pixel_icon(PIXEL_MOON))
         self.sleep_btn.setToolTip("Temporizador de apagado")
-        self.background_btn = QPushButton("FONDO")
-        self.background_btn.setObjectName("small")
+        self.background_btn = QPushButton()
+        self.background_btn.setObjectName("icon")
+        self.background_btn.setFixedSize(38, 32)
         self.background_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.background_btn.setIconSize(QSize(20, 20))
+        self.background_btn.setIcon(pixel_icon(PIXEL_SUN))
         self.background_btn.setToolTip("Color o portada de fondo")
         self.sleep_label = QLabel("")
         self.sleep_label.setObjectName("small")
@@ -630,12 +657,8 @@ class MainWindow(QMainWindow):
             lambda _checked=False: self._move_playlist_track(1)
         )
 
-        self.fav_btn.clicked.connect(self._toggle_favorite_current)
-        self.cover_minus.clicked.connect(
-            lambda _checked=False: self._change_cover_size(-COVER_STEP)
-        )
-        self.cover_plus.clicked.connect(
-            lambda _checked=False: self._change_cover_size(COVER_STEP)
+        self.hide_library_btn.clicked.connect(
+            lambda _checked=False: self._toggle_library()
         )
         self.sleep_btn.clicked.connect(self._open_sleep_dialog)
         self.background_btn.clicked.connect(self._choose_background)
@@ -655,6 +678,7 @@ class MainWindow(QMainWindow):
             ("Ctrl+O", self._choose_folder),
             ("F5", self._reload_library),
             ("Ctrl+L", self._toggle_panel_side),
+            ("Ctrl+H", self._toggle_library),
             ("Ctrl+Up", self._volume_up),
             ("Ctrl+Down", self._volume_down),
             (QKeySequence(Qt.Key.Key_MediaPlay), self.play_pause),
@@ -680,7 +704,7 @@ class MainWindow(QMainWindow):
         self.volume_value.setText(str(volume))
 
         self._refresh_playlist_combo()
-        self._update_fav_button()
+        self._update_library_button()
         self._set_mode("library")
 
     # ------------------------------------------------------------- library
@@ -985,7 +1009,6 @@ class MainWindow(QMainWindow):
         self.progress.setEnabled(True)
         self.play_btn.setText("PAUSA" if autoplay else "PLAY")
         self.state_label.setText("CARGANDO…" if autoplay else "RETOMANDO…")
-        self._update_fav_button()
         self._mark_playing()
         self.mpv.load(
             track.path,
@@ -1161,10 +1184,15 @@ class MainWindow(QMainWindow):
         self._update_repeat_button()
 
     def _update_repeat_button(self) -> None:
-        self.repeat_btn.setText(
-            {"off": "REP: NO", "all": "REP: TODO", "one": "REP: 1"}[
-                self.repeat
-            ]
+        rows = PIXEL_REPEAT_ONE if self.repeat == "one" else PIXEL_REPEAT
+        self.repeat_btn.setIcon(pixel_icon(rows))
+        names = {
+            "off": "no",
+            "all": "toda la lista",
+            "one": "una pista",
+        }
+        self.repeat_btn.setToolTip(
+            f"Repetir: {names[self.repeat]} (R)"
         )
 
     # ------------------------------------------------------------- favoritos
@@ -1178,7 +1206,6 @@ class MainWindow(QMainWindow):
         else:
             self.favorites.add(track.path)
         self.settings.setValue("favorites", sorted(self.favorites))
-        self._update_fav_button()
 
         if self.mode == "favorites":
             self._apply_filters()
@@ -1202,16 +1229,6 @@ class MainWindow(QMainWindow):
         track = self._selected_track() or self.current
         if track is not None:
             self._toggle_favorite(track)
-
-    def _update_fav_button(self) -> None:
-        if self.current is None:
-            self.fav_btn.setEnabled(False)
-            self.fav_btn.setIcon(heart_icon(11, False))
-            return
-        self.fav_btn.setEnabled(True)
-        self.fav_btn.setIcon(
-            heart_icon(11, self.current.path in self.favorites)
-        )
 
     # --------------------------------------------------------------- listas
     def _load_playlists(self) -> None:
@@ -1488,7 +1505,18 @@ class MainWindow(QMainWindow):
                 lambda _checked=False: self._move_playlist_track(1)
             )
 
+        menu.addSeparator()
+        info_action = menu.addAction("VER INFORMACIÓN")
+        info_action.triggered.connect(
+            lambda _checked=False, t=track: self._show_track_info(t)
+        )
+
         return menu
+
+    def _show_track_info(self, track: Track) -> None:
+        dialog = TrackInfoDialog(track, self)
+        dialog.setStyleSheet(self.styleSheet())
+        dialog.exec()
 
     def _confirm(self, title: str, message: str) -> bool:
         box = QMessageBox(self)
@@ -1508,16 +1536,6 @@ class MainWindow(QMainWindow):
         return box.exec() == QMessageBox.StandardButton.Yes
 
     # ---------------------------------------------------------------- portada
-    def _change_cover_size(self, delta: int) -> None:
-        new_size = self._clamp_cover(self.cover_size + delta)
-        if new_size == self.cover_size:
-            return
-        self.cover_size = new_size
-        self.settings.setValue("cover_size", new_size)
-        self.cover_size_label.setText(str(new_size))
-        self.cover_label.setFixedSize(new_size, new_size)
-        self._render_cover()
-
     def _update_cover(self, track: Track) -> None:
         data = get_cover_bytes(track)
         pixmap = QPixmap()
@@ -1582,7 +1600,6 @@ class MainWindow(QMainWindow):
             self.backdrop.set_cover(None)
         self.play_btn.setText("PLAY")
         self.state_label.setText("LISTO")
-        self._update_fav_button()
 
     # ------------------------------------------------------------------ fondo
     def _choose_background(self) -> None:
@@ -1603,17 +1620,20 @@ class MainWindow(QMainWindow):
         )
         dialog.setStyleSheet(self.styleSheet())
         if dialog.exec() != QDialog.DialogCode.Accepted:
+            self.sleep_btn.setChecked(self.sleep_seconds_left > 0)
             return
         if dialog.remove:
             self._cancel_sleep_timer()
         elif dialog.minutes:
             self._start_sleep_timer(dialog.minutes * 60, dialog.action)
+        else:
+            self.sleep_btn.setChecked(self.sleep_seconds_left > 0)
 
     def _start_sleep_timer(self, seconds: int, action: str) -> None:
         self.sleep_seconds_left = max(1, int(seconds))
         self.sleep_action = action
         self.sleep_timer.start()
-        self.sleep_btn.setText("DORMIR ●")
+        self.sleep_btn.setChecked(True)
         self._update_sleep_label()
         self.state_label.setText("TEMPORIZADOR ACTIVO")
 
@@ -1634,7 +1654,7 @@ class MainWindow(QMainWindow):
             self._update_sleep_label()
             return
         self.sleep_timer.stop()
-        self.sleep_btn.setText("DORMIR")
+        self.sleep_btn.setChecked(False)
         self.sleep_label.setText("")
         if self.sleep_action == "close":
             self.state_label.setText("CERRANDO…")
@@ -1648,7 +1668,7 @@ class MainWindow(QMainWindow):
         self.sleep_timer.stop()
         self.sleep_seconds_left = 0
         self.sleep_label.setText("")
-        self.sleep_btn.setText("DORMIR")
+        self.sleep_btn.setChecked(False)
         if was_active:
             self.state_label.setText("TEMPORIZADOR CANCELADO")
 
@@ -1742,7 +1762,6 @@ class MainWindow(QMainWindow):
         self.settings.setValue("volume", self.volume.value())
         self.settings.setValue("shuffle", self.shuffle)
         self.settings.setValue("repeat", self.repeat)
-        self.settings.setValue("cover_size", self.cover_size)
         self.settings.setValue("background_mode", self.bg_mode)
         self.settings.setValue("background_color", self.bg_color)
         self.settings.setValue("favorites", sorted(self.favorites))

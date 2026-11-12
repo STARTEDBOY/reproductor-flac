@@ -51,6 +51,7 @@ from library import (
     Track,
     format_time,
     get_cover_bytes,
+    get_lyrics,
     library_summary,
     load_cached_library,
     scan_library,
@@ -110,6 +111,8 @@ class MainWindow(QMainWindow):
         self._displayed_root = ""
         self.current_cover: QPixmap | None = None
         self.track_by_path: dict[str, Track] = {}
+        self.lyrics: list[tuple[float, str]] = []
+        self.lyric_index = -1
 
         self.settings = QSettings("STARTED", "Reproductor FLAC")
         self.shuffle = bool(self.settings.value("shuffle", False, bool))
@@ -505,6 +508,16 @@ class MainWindow(QMainWindow):
         self.meta_label = QLabel("")
         self.meta_label.setObjectName("meta")
         layout.addWidget(self.meta_label)
+
+        self.lyrics_label = QLabel("")
+        self.lyrics_label.setObjectName("lyrics")
+        self.lyrics_label.setWordWrap(True)
+        self.lyrics_label.setFixedHeight(86)
+        self.lyrics_label.setAlignment(
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop
+        )
+        self.lyrics_label.setVisible(False)
+        layout.addWidget(self.lyrics_label)
 
         layout.addStretch(1)
 
@@ -1063,6 +1076,7 @@ class MainWindow(QMainWindow):
         album = track.display_album
         quality = track.quality
         self.meta_label.setText(f"{album} · {quality}" if quality else album)
+        self._load_lyrics(track)
         self._update_cover(track)
 
         self.progress.setEnabled(True)
@@ -1151,9 +1165,57 @@ class MainWindow(QMainWindow):
         self.time_current.setText("0:00")
         self.play_btn.setText("PLAY")
         self.state_label.setText("FIN DE LA LISTA")
+        self._clear_lyrics()
+
+    def _load_lyrics(self, track: Track) -> None:
+        """Carga la letra de la pista y muestra la línea de la posición."""
+        try:
+            self.lyrics = get_lyrics(track)
+        except Exception:
+            self.lyrics = []
+        self.lyric_index = -1
+        self.lyrics_label.setText("")
+        self.lyrics_label.setVisible(bool(self.lyrics))
+        self._update_lyrics(self.position)
+
+    def _update_lyrics(self, position: float) -> None:
+        """Muestra la línea actual y la siguiente según la reproducción."""
+        if not self.lyrics:
+            if self.lyrics_label.text():
+                self.lyrics_label.setText("")
+            self.lyrics_label.setVisible(False)
+            return
+        if self.lyrics_label.isHidden():
+            self.lyrics_label.setVisible(True)
+
+        index = -1
+        for position_index, (stamp, _line) in enumerate(self.lyrics):
+            if stamp <= position + 0.05:
+                index = position_index
+            else:
+                break
+        if index == self.lyric_index:
+            return
+        self.lyric_index = index
+
+        if index < 0:
+            self.lyrics_label.setText("")
+            return
+
+        text = self.lyrics[index][1]
+        if index + 1 < len(self.lyrics):
+            text = f"{text}\n{self.lyrics[index + 1][1]}"
+        self.lyrics_label.setText(text)
+
+    def _clear_lyrics(self) -> None:
+        self.lyrics = []
+        self.lyric_index = -1
+        self.lyrics_label.setText("")
+        self.lyrics_label.setVisible(False)
 
     def _on_position(self, position: float) -> None:
         self.position = position
+        self._update_lyrics(position)
         if self.seeking or self.duration <= 0:
             return
         value = int(max(0.0, min(1.0, position / self.duration)) * 1000)
@@ -1654,6 +1716,7 @@ class MainWindow(QMainWindow):
         self.title_label.setToolTip("")
         self.artist_label.setText("—")
         self.meta_label.setText("")
+        self._clear_lyrics()
         self.cover_label.setPixmap(self._placeholder())
         if self.bg_mode == "cover":
             self.backdrop.set_cover(None)

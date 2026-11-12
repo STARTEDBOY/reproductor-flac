@@ -600,6 +600,7 @@ class TrackInfoDialog(QDialog):
         grid = QGridLayout()
         grid.setHorizontalSpacing(18)
         grid.setVerticalSpacing(7)
+        self._info_rows: list[tuple[QLabel, QLabel]] = []
         for row, (label, value) in enumerate(rows):
             key = QLabel(label)
             key.setObjectName("small")
@@ -608,14 +609,19 @@ class TrackInfoDialog(QDialog):
             )
             text = QLabel(value)
             text.setWordWrap(True)
+            text.setAlignment(
+                Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft
+            )
             text.setTextInteractionFlags(
                 Qt.TextInteractionFlag.TextSelectableByMouse
             )
             if label == "ARCHIVO":
                 text.setObjectName("muted")
-            grid.addWidget(key, row, 0)
-            grid.addWidget(text, row, 1)
+            grid.addWidget(key, row, 0, Qt.AlignmentFlag.AlignTop)
+            grid.addWidget(text, row, 1, Qt.AlignmentFlag.AlignTop)
+            self._info_rows.append((key, text))
         grid.setColumnStretch(1, 1)
+        grid.setRowStretch(len(rows), 1)
         layout.addLayout(grid)
 
         buttons = QHBoxLayout()
@@ -628,3 +634,35 @@ class TrackInfoDialog(QDialog):
         layout.addLayout(buttons)
 
         close.setDefault(True)
+
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        self._align_info_rows()
+
+    def _align_info_rows(self) -> None:
+        """Alinea cada etiqueta con su valor por la línea base del texto.
+
+        Las etiquetas usan una fuente distinta (y más pequeña) que los
+        valores, así que se compensa la diferencia de ascenso con un margen
+        superior para que ambas líneas base coincidan.
+        """
+        if not self._info_rows:
+            return
+
+        key_width = 0
+        for key, value in self._info_rows:
+            key.setContentsMargins(0, 0, 0, 0)
+            value.setContentsMargins(0, 0, 0, 0)
+            key.ensurePolished()
+            value.ensurePolished()
+            key_width = max(key_width, key.sizeHint().width())
+
+        for key, value in self._info_rows:
+            key.setFixedWidth(key_width)
+            diff = value.fontMetrics().ascent() - key.fontMetrics().ascent()
+            if diff > 0:
+                key.setContentsMargins(0, diff, 0, 0)
+            elif diff < 0:
+                value.setContentsMargins(0, -diff, 0, 0)
+
+        self.layout().activate()

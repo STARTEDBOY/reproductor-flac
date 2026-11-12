@@ -27,6 +27,8 @@ puedes usar **EXAMINAR…**), o ejecuta:
   comprueba en segundo plano si hay archivos nuevos o modificados.
 - Lee título, artista, álbum, año, género, número de pista y calidad.
 - Muestra la portada incrustada (con caché para cargarla al instante).
+- Muestra la letra bajo el álbum en **AHORA SUENA**, avanzando con la canción:
+  lee etiquetas LRC incrustadas (`lyrics`/`unsyncedlyrics`) o archivos `.lrc`.
 - Buscador y filtros por artista y álbum.
 - Reproducción, pausa, anterior, siguiente, barra de progreso y volumen.
 - Clic en cualquier punto de la barra para saltar; también se puede arrastrar.
@@ -37,7 +39,7 @@ puedes usar **EXAMINAR…**), o ejecuta:
 - Listas personalizadas: crea una lista, añade canciones concretas, quita y
   reordena. También puedes usar el clic derecho sobre una pista.
 - Clic derecho sobre una pista para ver toda su información: etiquetas, calidad
-  y ruta del archivo.
+  y ruta del archivo, con cada etiqueta y su valor alineados por línea base.
 - Temporizador de apagado: pausa la música o cierra el reproductor al terminar.
 - Fondo **negro**, de **color libre** o con la **portada** de la canción actual.
 - Panel del reproductor a la **izquierda o a la derecha** con el icono de intercambio.

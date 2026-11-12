@@ -10,6 +10,7 @@ import base64
 import hashlib
 import json
 import os
+import re
 import tempfile
 from dataclasses import dataclass, fields
 from pathlib import Path
@@ -395,3 +396,130 @@ def get_cover_bytes(track: Track) -> bytes | None:
 def library_summary(tracks: list[Track]) -> str:
     albums = len({(t.albumartist or t.artist, t.album) for t in tracks})
     return f"{len(tracks)} PISTAS · {albums} ÁLBUMES"
+
+
+# --------------------------------------------------------------- letras
+LRC_TIMESTAMP = re.compile(r"\[(\d+):(\d+(?:[.:]\d+)?)\]")
+LRC_WORD_TAG = re.compile(r"<[^>]*>")
+LRC_VERSION = re.compile(r"^v\d+:\s*", re.IGNORECASE)
+
+
+def parse_lyrics(text: str, duration: float = 0.0) -> list[tuple[float, str]]:
+    """Convierte una letra LRC en pares (segundo, línea).
+
+    Acepta varias marcas de tiempo por línea, elimina las marcas de palabra
+    ``<mm:ss.xx>`` y el prefijo ``v1:``. Si no hay marcas de tiempo reparte
+    las líneas a lo largo de la duración para que la letra también avance.
+    """
+    if not text:
+        return []
+
+    entries: list[tuple[float, str]] = []
+    plain: list[str] = []
+    for raw in text.replace("\r\n", "\n").replace("\r", "\n").split("\n"):
+        line = raw.strip()
+        if not line:
+            continue
+        matches = list(LRC_TIMESTAMP.finditer(line))
+        if not matches:
+            if not line.startswith("["):
+                plain.append(line)
+            continue
+        content = line[matches[-1].end():]
+        content = LRC_WORD_TAG.sub("", content)
+        content = LRC_VERSION.sub("", content).strip()
+        if not content:
+            continue
+        for match in matches:
+            minutes = int(match.group(1))
+            seconds = float(match.group(2).replace(":", "."))
+            entries.append((minutes * 60 + seconds, content))
+
+    if entries:
+        entries.sort(key=lambda item: item[0])
+        cleaned: list[tuple[float, str]] = []
+        for stamp, content in entries:
+            if (
+                cleaned
+                and cleaned[-1][1] == content
+                and abs(cleaned[-1][0] - stamp) < 0.01
+            ):
+                continue
+            cleaned.append((stamp, content))
+        return cleaned
+
+    if not plain:
+        return []
+    lines = [
+        LRC_VERSION.sub("", LRC_WORD_TAG.sub("", line)).strip()
+        for line in plain
+    ]
+    lines = [line for line in lines if line]
+    if not lines:
+        return []
+    total = duration if duration > 0 else len(lines) * 4.0
+    step = total / len(lines)
+    return [(index * step, line) for index, line in enumerate(lines)]
+
+
+def _lyrics_from_tags(audio) -> str:
+    tags = getattr(audio, "tags", None)
+    if not tags:
+        return ""
+    try:
+        keys = list(tags.keys())
+    except Exception:
+        return ""
+    for key in keys:
+        name = str(key).lower()
+        if not (
+            "lyrics" in name
+            or "unsynced" in name
+            or name in ("©lyr", "uslt")
+        ):
+            continue
+        try:
+            value = tags.get(key)
+        except Exception:
+            continue
+        if isinstance(value, (list, tuple)):
+            value = value[0] if value else ""
+        if hasattr(value, "text"):
+            value = value.text
+        text = str(value).strip()
+        if text:
+            return text
+    return ""
+
+
+def get_lyrics(track: Track) -> list[tuple[float, str]]:
+    """Devuelve la letra sincronizada de una pista, si existe.
+
+    Primero busca un archivo ``.lrc`` junto a la canción y, si no hay,
+    lee las etiquetas ``lyrics``/``unsyncedlyrics`` del propio archivo.
+    """
+    path = Path(track.path)
+    texts: list[str] = []
+
+    sidecar = path.with_suffix(".lrc")
+    try:
+        if sidecar.exists():
+            texts.append(sidecar.read_text(encoding="utf-8", errors="ignore"))
+    except OSError:
+        pass
+
+    if not texts:
+        try:
+            audio = _load(path)
+        except Exception:
+            audio = None
+        if audio is not None:
+            text = _lyrics_from_tags(audio)
+            if text:
+                texts.append(text)
+
+    for text in texts:
+        parsed = parse_lyrics(text, track.duration)
+        if parsed:
+            return parsed
+    return []

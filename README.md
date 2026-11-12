@@ -23,6 +23,8 @@ puedes usar **EXAMINAR…**), o ejecuta:
 ## Funciones
 
 - Escanea FLAC, MP3, OGG, OPUS, M4A, WAV, AIFF, APE y WV.
+- Guarda la biblioteca en caché: al abrir, la lista aparece al instante y se
+  comprueba en segundo plano si hay archivos nuevos o modificados.
 - Lee título, artista, álbum, año, género, número de pista y calidad.
 - Muestra la portada incrustada (con caché para cargarla al instante).
 - Buscador y filtros por artista y álbum.
@@ -39,6 +41,10 @@ puedes usar **EXAMINAR…**), o ejecuta:
 - Temporizador de apagado: pausa la música o cierra el reproductor al terminar.
 - Fondo **negro**, de **color libre** o con la **portada** de la canción actual.
 - Panel del reproductor a la **izquierda o a la derecha** con el icono de intercambio.
+- Iconos pixel art de 12 × 12 celdas, todos del mismo tamaño: aleatorio,
+  repetir, temporizador, fondo, cambiar de lado y ocultar biblioteca.
+- **Temporizador**, **Color o portada de fondo** y **ocultar biblioteca** están
+  juntos en la fila superior de **AHORA SUENA**.
 - Icono del ojo para **ocultar la biblioteca** y dejar solo **AHORA SUENA**.
 - Cambio de carpeta escribiendo, pegando o examinando una ruta.
 - Arrastra una carpeta sobre la ventana para cargarla.
@@ -88,9 +94,9 @@ pip install --user PySide6 mutagen
 | --- | --- |
 | `main.py` | Punto de entrada |
 | `ui.py` | Ventana, biblioteca, listas y reproducción |
-| `theme.py` | Estilos, fondo y sliders |
+| `theme.py` | Estilos, fondo, sliders e iconos pixel art |
 | `dialogs.py` | Diálogos de carpeta, fondo, listas, temporizador e información |
-| `library.py` | Escaneo de etiquetas y portadas |
+| `library.py` | Escaneo de etiquetas, caché de biblioteca y portadas |
 | `mpv_backend.py` | Comunicación con mpv por IPC |
 | `assets/fonts/` | Press Start 2P y VT323 |
 | `assets/icon.svg` | Icono de la aplicación |
@@ -100,9 +106,10 @@ pip install --user PySide6 mutagen
 - Ajustes, favoritos y última sesión:
   `~/.config/STARTED/Reproductor FLAC.conf`
 - Listas personalizadas: `~/.config/STARTED/playlists.json`
-- Caché de portadas: `~/.cache/reproductor-flac/covers/`
+- Caché de la biblioteca: `~/.cache/reproductor-flac/library.json`
+- Caché de portadas: `~/.cache/reproductor-flac/*.img`
 
-Puedes borrar la caché sin miedo; se regenera al abrir cada álbum. Si borras
+Puedes borrar la caché sin miedo; se regenera al abrir la aplicación. Si borras
 `playlists.json` se pierden las listas, pero no las canciones.
 
 ## Notas

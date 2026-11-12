@@ -52,6 +52,7 @@ from library import (
     format_time,
     get_cover_bytes,
     library_summary,
+    load_cached_library,
     scan_library,
 )
 from mpv_backend import MpvController
@@ -106,6 +107,7 @@ class MainWindow(QMainWindow):
         self.last_volume = 70
         self.scan_thread: ScanWorker | None = None
         self.pending_library: str | None = None
+        self._displayed_root = ""
         self.current_cover: QPixmap | None = None
         self.track_by_path: dict[str, Track] = {}
 
@@ -439,16 +441,40 @@ class MainWindow(QMainWindow):
         now.setObjectName("section")
         top.addWidget(now)
         top.addStretch(1)
+        self.sleep_label = QLabel("")
+        self.sleep_label.setObjectName("small")
+        self.sleep_label.setAlignment(
+            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+        )
+        self.sleep_btn = QPushButton()
+        self.sleep_btn.setObjectName("icon")
+        self.sleep_btn.setFixedSize(38, 32)
+        self.sleep_btn.setCheckable(True)
+        self.sleep_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.sleep_btn.setIconSize(QSize(24, 24))
+        self.sleep_btn.setIcon(pixel_icon(PIXEL_MOON))
+        self.sleep_btn.setToolTip("Temporizador de apagado")
+        self.background_btn = QPushButton()
+        self.background_btn.setObjectName("icon")
+        self.background_btn.setFixedSize(38, 32)
+        self.background_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.background_btn.setIconSize(QSize(24, 24))
+        self.background_btn.setIcon(pixel_icon(PIXEL_SUN))
+        self.background_btn.setToolTip("Color o portada de fondo")
         self.hide_library_btn = QPushButton()
         self.hide_library_btn.setObjectName("icon")
-        self.hide_library_btn.setFixedSize(38, 30)
+        self.hide_library_btn.setFixedSize(38, 32)
         self.hide_library_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.hide_library_btn.setIconSize(QSize(20, 20))
+        self.hide_library_btn.setIconSize(QSize(24, 24))
         self.hide_library_btn.setIcon(pixel_icon(PIXEL_EYE))
         self.hide_library_btn.setToolTip(
             "Ocultar la biblioteca y dejar solo AHORA SUENA (Ctrl+H)"
         )
+        top.addWidget(self.sleep_label)
+        top.addWidget(self.sleep_btn)
+        top.addWidget(self.background_btn)
         top.addWidget(self.hide_library_btn)
+        top.addSpacing(-10)
         layout.addLayout(top)
 
         self.cover_label = QLabel()
@@ -563,34 +589,6 @@ class MainWindow(QMainWindow):
         volume_row.addWidget(self.volume)
         volume_row.addWidget(self.volume_value)
         layout.addLayout(volume_row)
-
-        tools = QHBoxLayout()
-        tools.setSpacing(8)
-        self.sleep_btn = QPushButton()
-        self.sleep_btn.setObjectName("icon")
-        self.sleep_btn.setFixedSize(38, 32)
-        self.sleep_btn.setCheckable(True)
-        self.sleep_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.sleep_btn.setIconSize(QSize(20, 20))
-        self.sleep_btn.setIcon(pixel_icon(PIXEL_MOON))
-        self.sleep_btn.setToolTip("Temporizador de apagado")
-        self.background_btn = QPushButton()
-        self.background_btn.setObjectName("icon")
-        self.background_btn.setFixedSize(38, 32)
-        self.background_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.background_btn.setIconSize(QSize(20, 20))
-        self.background_btn.setIcon(pixel_icon(PIXEL_SUN))
-        self.background_btn.setToolTip("Color o portada de fondo")
-        self.sleep_label = QLabel("")
-        self.sleep_label.setObjectName("small")
-        self.sleep_label.setAlignment(
-            Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
-        )
-        tools.addWidget(self.sleep_btn)
-        tools.addWidget(self.background_btn)
-        tools.addStretch(1)
-        tools.addWidget(self.sleep_label)
-        layout.addLayout(tools)
 
         self.state_label = QLabel("INICIANDO…")
         self.state_label.setObjectName("state")
@@ -735,37 +733,83 @@ class MainWindow(QMainWindow):
 
         if remember:
             self.settings.setValue("library", str(folder))
-        self.path_label.setText(str(folder))
-        self.path_label.setToolTip(str(folder))
-        self.state_label.setText("ESCANEANDO…")
+        root = str(folder)
+        self.path_label.setText(root)
+        self.path_label.setToolTip(root)
         self.reload_btn.setEnabled(False)
 
-        self.scan_thread = ScanWorker(str(folder))
+        cached = load_cached_library(folder)
+        if cached is not None:
+            # Mostrar la lista guardada al instante; el escaneo solo comprueba
+            # si hay archivos nuevos o modificados.
+            self._show_library(cached, root, restore_session=True)
+            self.state_label.setText("ACTUALIZANDO BIBLIOTECA…")
+        else:
+            self.state_label.setText("ESCANEANDO…")
+
+        self.scan_thread = ScanWorker(root)
         self.scan_thread.done.connect(self._library_loaded)
         self.scan_thread.fail.connect(self._scan_failed)
         self.scan_thread.finished.connect(self._scan_finished)
         self.scan_thread.start()
 
-    def _library_loaded(self, tracks: list[Track], root: str) -> None:
-        self.mpv.stop()
-        self._reset_player()
+    def _show_library(
+        self, tracks: list[Track], root: str, restore_session: bool = False
+    ) -> None:
+        if self._displayed_root != root:
+            self.mpv.stop()
+            self._reset_player()
         self.tracks = tracks
         self.track_by_path = {track.path: track for track in tracks}
         self.visible = tracks
         self._populate_filters()
         self._refresh_playlist_combo()
         self._apply_filters()
+        self._displayed_root = root
         self.path_label.setText(root)
         self.path_label.setToolTip(root)
         self.folder_btn.setEnabled(True)
         self.reload_btn.setEnabled(True)
+        self.setWindowTitle(f"Reproductor FLAC · {Path(root).name or root}")
+        if restore_session and tracks:
+            self.table.setFocus()
+            QTimer.singleShot(0, self._restore_last_session)
+
+    def _library_loaded(self, tracks: list[Track], root: str) -> None:
+        if self._displayed_root == root:
+            # Refresco en segundo plano: mantener la reproducción actual y los
+            # filtros elegidos por el usuario.
+            current_path = self.current.path if self.current is not None else ""
+            artist = self.artist_combo.currentData() or ""
+            album = self.album_combo.currentData() or ""
+            self.tracks = tracks
+            self.track_by_path = {track.path: track for track in tracks}
+            self.visible = tracks
+            self._populate_filters()
+            self._restore_filters(artist, album)
+            self._refresh_playlist_combo()
+            self._apply_filters()
+            if current_path:
+                self.current = self.track_by_path.get(current_path, self.current)
+            self.path_label.setText(root)
+            self.path_label.setToolTip(root)
+            self.folder_btn.setEnabled(True)
+            self.reload_btn.setEnabled(True)
+            if tracks:
+                self.state_label.setText("BIBLIOTECA LISTA")
+                if not self._session_restored:
+                    QTimer.singleShot(0, self._restore_last_session)
+            else:
+                self.state_label.setText("SIN ARCHIVOS DE AUDIO")
+            self.setWindowTitle(f"Reproductor FLAC · {Path(root).name or root}")
+            return
+
+        self._show_library(tracks, root, restore_session=True)
         if tracks:
             self.state_label.setText("BIBLIOTECA LISTA")
             self.table.setFocus()
-            QTimer.singleShot(250, self._restore_last_session)
         else:
             self.state_label.setText("SIN ARCHIVOS DE AUDIO")
-        self.setWindowTitle(f"Reproductor FLAC · {Path(root).name or root}")
 
     def _scan_failed(self, message: str) -> None:
         self.state_label.setText("ERROR AL ESCANEAR")
@@ -841,6 +885,21 @@ class MainWindow(QMainWindow):
             self.album_combo.addItem(album, album)
         self.album_combo.setCurrentIndex(0)
         self.album_combo.blockSignals(False)
+
+    def _restore_filters(self, artist: str, album: str) -> None:
+        if artist:
+            index = self.artist_combo.findData(artist)
+            if index > 0:
+                self.artist_combo.blockSignals(True)
+                self.artist_combo.setCurrentIndex(index)
+                self.artist_combo.blockSignals(False)
+                self._populate_albums()
+        if album:
+            index = self.album_combo.findData(album)
+            if index > 0:
+                self.album_combo.blockSignals(True)
+                self.album_combo.setCurrentIndex(index)
+                self.album_combo.blockSignals(False)
 
     def _artist_changed(self) -> None:
         self._populate_albums()
@@ -1676,12 +1735,15 @@ class MainWindow(QMainWindow):
     def _restore_last_session(self) -> None:
         if self._session_restored:
             return
-        self._session_restored = True
         if not self.resume_path:
+            self._session_restored = True
             return
         track = self.track_by_path.get(self.resume_path)
         if track is None:
+            # La caché puede no tener la pista todavía: se reintenta cuando
+            # termina el escaneo en segundo plano.
             return
+        self._session_restored = True
         position = max(0.0, self.resume_position)
         if track.duration > 0:
             position = min(position, max(0.0, track.duration - 0.25))

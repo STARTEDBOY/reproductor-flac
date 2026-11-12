@@ -8,8 +8,10 @@ from __future__ import annotations
 
 import base64
 import hashlib
+import json
 import os
-from dataclasses import dataclass
+import tempfile
+from dataclasses import dataclass, fields
 from pathlib import Path
 
 import mutagen
@@ -21,6 +23,8 @@ SUPPORTED = {
 }
 
 CACHE_DIR = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "reproductor-flac"
+LIBRARY_CACHE = CACHE_DIR / "library.json"
+CACHE_VERSION = 1
 
 
 @dataclass(slots=True, frozen=True)
@@ -169,26 +173,146 @@ def _sort_key(track: Track):
     )
 
 
-def scan_library(root: str | Path) -> list[Track]:
+_TRACK_FIELDS = tuple(field.name for field in fields(Track))
+
+
+def _root_key(root: str | Path) -> str:
+    try:
+        return str(Path(root).expanduser().resolve())
+    except OSError:
+        return str(Path(root).expanduser())
+
+
+def _track_data(track: Track) -> dict:
+    return {name: getattr(track, name) for name in _TRACK_FIELDS}
+
+
+def _track_from_data(data: object, path: str) -> Track | None:
+    if not isinstance(data, dict):
+        return None
+    if any(name not in data for name in _TRACK_FIELDS):
+        return None
+    values = {name: data[name] for name in _TRACK_FIELDS if name != "path"}
+    try:
+        return Track(path=path, **values)
+    except (TypeError, ValueError):
+        return None
+
+
+def _read_library_cache() -> dict:
+    try:
+        with LIBRARY_CACHE.open("r", encoding="utf-8") as handle:
+            data = json.load(handle)
+    except (OSError, ValueError):
+        return {}
+    if not isinstance(data, dict) or data.get("version") != CACHE_VERSION:
+        return {}
+    roots = data.get("roots")
+    return roots if isinstance(roots, dict) else {}
+
+
+def _write_library_cache(roots: dict) -> None:
+    try:
+        CACHE_DIR.mkdir(parents=True, exist_ok=True)
+        descriptor, temporary = tempfile.mkstemp(
+            dir=str(CACHE_DIR), prefix="library-", suffix=".tmp"
+        )
+        try:
+            with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+                json.dump(
+                    {"version": CACHE_VERSION, "roots": roots},
+                    handle,
+                    ensure_ascii=False,
+                )
+            os.replace(temporary, LIBRARY_CACHE)
+        except BaseException:
+            try:
+                os.unlink(temporary)
+            except OSError:
+                pass
+            raise
+    except OSError:
+        pass
+
+
+def load_cached_library(root: str | Path) -> list[Track] | None:
+    """Devuelve la biblioteca guardada en caché sin leer los archivos.
+
+    Es instantánea: sirve para pintar la lista al abrir la aplicación
+    mientras un escaneo en segundo plano comprueba si hay cambios.
+    """
+    key = _root_key(root)
+    entry = _read_library_cache().get(key)
+    if not isinstance(entry, dict):
+        return None
+    files = entry.get("files")
+    if not isinstance(files, dict):
+        return None
+    base = Path(root).expanduser()
+    tracks: list[Track] = []
+    for relative, item in files.items():
+        if not isinstance(item, dict):
+            continue
+        track = _track_from_data(item.get("track"), str(base / relative))
+        if track is not None:
+            tracks.append(track)
+    tracks.sort(key=_sort_key)
+    return tracks
+
+
+def scan_library(root: str | Path, use_cache: bool = True) -> list[Track]:
     root = Path(root)
     if not root.is_dir():
         raise FileNotFoundError(f"No existe la carpeta: {root}")
 
+    key = _root_key(root)
+    cached_roots = _read_library_cache() if use_cache else {}
+    entry = cached_roots.get(key)
+    cached_files = entry.get("files") if isinstance(entry, dict) else None
+    if not isinstance(cached_files, dict):
+        cached_files = {}
+
     tracks: list[Track] = []
+    files: dict[str, dict] = {}
     for path in root.rglob("*"):
         try:
             if not path.is_file() or path.suffix.lower() not in SUPPORTED:
                 continue
+            stat = path.stat()
         except OSError:
             continue
         try:
-            track = read_track(path)
-        except Exception:
-            track = None
-        if track is not None:
-            tracks.append(track)
+            relative = path.relative_to(root).as_posix()
+        except ValueError:
+            relative = path.name
+
+        cached = cached_files.get(relative)
+        track = None
+        if (
+            isinstance(cached, dict)
+            and cached.get("mtime_ns") == stat.st_mtime_ns
+            and cached.get("size") == stat.st_size
+        ):
+            track = _track_from_data(cached.get("track"), str(path))
+        if track is None:
+            try:
+                track = read_track(path)
+            except Exception:
+                track = None
+        if track is None:
+            continue
+
+        files[relative] = {
+            "mtime_ns": stat.st_mtime_ns,
+            "size": stat.st_size,
+            "track": _track_data(track),
+        }
+        tracks.append(track)
 
     tracks.sort(key=_sort_key)
+    if use_cache and files != cached_files:
+        cached_roots[key] = {"files": files}
+        _write_library_cache(cached_roots)
     return tracks
 
 

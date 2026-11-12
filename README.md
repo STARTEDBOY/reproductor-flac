@@ -43,8 +43,9 @@ puedes usar **EXAMINAR…**), o ejecuta:
 - Temporizador de apagado: pausa la música o cierra el reproductor al terminar.
 - Fondo **negro**, de **color libre** o con la **portada** de la canción actual.
 - Panel del reproductor a la **izquierda o a la derecha** con el icono de intercambio.
-- Iconos pixel art de 12 × 12 celdas, todos del mismo tamaño: aleatorio,
-  repetir, temporizador, fondo, cambiar de lado y ocultar biblioteca.
+- Iconos pixel art propios para aleatorio, repetir, temporizador, fondo y
+  ocultar biblioteca, guardados en `assets/icons/`. El de cambiar de lado sigue
+  dibujado en la rejilla de 12 × 12.
 - **Temporizador**, **Color o portada de fondo** y **ocultar biblioteca** están
   juntos en la fila superior de **AHORA SUENA**.
 - Icono del ojo para **ocultar la biblioteca** y dejar solo **AHORA SUENA**.
@@ -101,6 +102,7 @@ pip install --user PySide6 mutagen
 | `library.py` | Escaneo de etiquetas, caché de biblioteca y portadas |
 | `mpv_backend.py` | Comunicación con mpv por IPC |
 | `assets/fonts/` | Press Start 2P y VT323 |
+| `assets/icons/` | Iconos PNG de los controles del reproductor |
 | `assets/icon.svg` | Icono de la aplicación |
 
 ## Datos guardados

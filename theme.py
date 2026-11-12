@@ -13,6 +13,7 @@ from PySide6.QtGui import (
     QIcon,
     QLinearGradient,
     QPainter,
+    QPen,
     QPixmap,
 )
 from PySide6.QtWidgets import (
@@ -23,6 +24,8 @@ from PySide6.QtWidgets import (
 )
 
 DEFAULT_COVER_SIZE = 320
+CONTROL_ICON_SIZE = 28
+ICON_DIR = Path(__file__).resolve().parent / "assets" / "icons"
 
 STYLE_TEMPLATE = """
 * { outline: none; }
@@ -395,83 +398,8 @@ def heart_pixmap(size: int, filled: bool, color: str = "#ffffff") -> QPixmap:
     return pixmap
 
 
-# Iconos pixel art de los controles. Todos comparten una rejilla de 12 x 12
-# para que se vean del mismo tamaño.
-PIXEL_SHUFFLE = (
-    "#.......####",
-    ".#.......###",
-    "..#......###",
-    "...#....#...",
-    "....#..#....",
-    ".....##.....",
-    ".....##.....",
-    "....#..#....",
-    "...#....#...",
-    "..#......###",
-    ".#.......###",
-    "#.......####",
-)
-
-PIXEL_REPEAT = (
-    "............",
-    ".........#..",
-    ".........##.",
-    ".###########",
-    ".###########",
-    ".##......##.",
-    ".##......##.",
-    ".##......##.",
-    ".##......##.",
-    "###########.",
-    "###########.",
-    ".##.........",
-)
-
-PIXEL_REPEAT_ONE = (
-    "............",
-    ".........#..",
-    ".........##.",
-    ".###########",
-    ".###########",
-    ".##..#...##.",
-    ".##.##...##.",
-    ".##..#...##.",
-    ".##..#...##.",
-    "###########.",
-    "###########.",
-    ".##.........",
-)
-
-PIXEL_MOON = (
-    "...##.......",
-    "..###.......",
-    ".####.......",
-    "####........",
-    "####........",
-    "#####.......",
-    "#####.......",
-    "######......",
-    "#######.....",
-    ".##########.",
-    "..########..",
-    "...######...",
-)
-
-PIXEL_SUN = (
-    ".....##.....",
-    ".....##.....",
-    "..#..##..#..",
-    "...######...",
-    "..########..",
-    "#.########.#",
-    "#.########.#",
-    "..########..",
-    "...######...",
-    "..#..##..#..",
-    ".....##.....",
-    ".....##.....",
-)
-
+# Icono pixel art del botón que cambia el panel de lado. El resto de controles
+# usa los PNG de assets/icons/.
 PIXEL_SWAP = (
     "...##.......",
     "...###......",
@@ -486,39 +414,6 @@ PIXEL_SWAP = (
     "...###......",
     "...##.......",
 )
-
-PIXEL_EYE = (
-    "............",
-    "............",
-    "....####....",
-    "..##....##..",
-    ".#..####..#.",
-    "#...####...#",
-    "#...####...#",
-    ".#..####..#.",
-    "..##....##..",
-    "....####....",
-    "............",
-    "............",
-)
-
-
-def _slash_rows(rows: tuple[str, ...]) -> tuple[str, ...]:
-    """Tacha el icono con una diagonal y deja un hueco para que se lea."""
-    grid = [list(row) for row in rows]
-    size = len(grid)
-    for index in range(size):
-        for offset_y in (-1, 0, 1):
-            for offset_x in (-1, 0, 1):
-                y, x = index + offset_y, index + offset_x
-                if 0 <= y < size and 0 <= x < size:
-                    grid[y][x] = "."
-    for index in range(size):
-        grid[index][index] = "#"
-    return tuple("".join(row) for row in grid)
-
-
-PIXEL_EYE_OFF = _slash_rows(PIXEL_EYE)
 
 
 @lru_cache(maxsize=128)
@@ -581,6 +476,137 @@ def pixel_icon(rows: tuple[str, ...], size: int = 24) -> QIcon:
             QIcon.State.Off,
         )
     return icon
+
+
+def _tinted_pixmap(source: QPixmap, size: int, color: str) -> QPixmap:
+    """Escala un icono PNG y lo tiñe conservando la transparencia."""
+    scaled = source.scaled(
+        size,
+        size,
+        Qt.AspectRatioMode.KeepAspectRatio,
+        Qt.TransformationMode.FastTransformation,
+    )
+    tinted = QPixmap(scaled.size())
+    tinted.fill(Qt.GlobalColor.transparent)
+    painter = QPainter(tinted)
+    painter.drawPixmap(0, 0, scaled)
+    painter.setCompositionMode(
+        QPainter.CompositionMode.CompositionMode_SourceIn
+    )
+    painter.fillRect(tinted.rect(), QColor(color))
+    painter.end()
+    return tinted
+
+
+@lru_cache(maxsize=32)
+def _raw_icon(name: str) -> QPixmap:
+    return QPixmap(str(ICON_DIR / name))
+
+
+def _crop_icon(pixmap: QPixmap) -> QPixmap:
+    """Recorta el margen transparente para dejar la rejilla de 28 x 28."""
+    side = min(pixmap.width(), pixmap.height())
+    if side <= 0:
+        return pixmap
+    margin = max(0, (side - 224) // 2)
+    inner = side - margin * 2
+    return pixmap.copy(margin, margin, inner, inner)
+
+
+@lru_cache(maxsize=32)
+def _icon_source(name: str) -> QPixmap:
+    return _crop_icon(_raw_icon(name))
+
+
+@lru_cache(maxsize=1)
+def _eye_off_source() -> QPixmap:
+    """Ojo con una barra diagonal, como el icono de ocultar anterior."""
+    pixmap = _raw_icon("library.png").copy()
+    painter = QPainter(pixmap)
+    painter.setRenderHint(QPainter.RenderHint.Antialiasing, False)
+    painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_Clear)
+    painter.setPen(
+        QPen(
+            QColor("#ffffff"),
+            32,
+            Qt.PenStyle.SolidLine,
+            Qt.PenCapStyle.SquareCap,
+        )
+    )
+    painter.drawLine(40, 216, 216, 40)
+    painter.setCompositionMode(
+        QPainter.CompositionMode.CompositionMode_SourceOver
+    )
+    painter.setPen(
+        QPen(
+            QColor("#ffffff"),
+            16,
+            Qt.PenStyle.SolidLine,
+            Qt.PenCapStyle.SquareCap,
+        )
+    )
+    painter.drawLine(40, 216, 216, 40)
+    painter.end()
+    return _crop_icon(pixmap)
+
+
+@lru_cache(maxsize=1)
+def _repeat_one_source() -> QPixmap:
+    """Icono de repetir con un 1 dibujado en el centro."""
+    pixmap = _raw_icon("repeat.png").copy()
+    painter = QPainter(pixmap)
+    painter.setPen(Qt.PenStyle.NoPen)
+    painter.setBrush(QColor("#ffffff"))
+    # Rejilla de 32 x 32 celdas, 8 px por celda.
+    painter.drawRect(120, 96, 16, 80)   # tallo
+    painter.drawRect(104, 104, 16, 16)  # bandera
+    painter.drawRect(104, 160, 48, 16)  # base
+    painter.end()
+    return _crop_icon(pixmap)
+
+
+def _build_file_icon(source: QPixmap, size: int) -> QIcon:
+    icon = QIcon()
+    for factor in (1, 2, 4):
+        scaled = size * factor
+        for state, color in (
+            (QIcon.State.Off, "#ffffff"),
+            (QIcon.State.On, "#000000"),
+        ):
+            icon.addPixmap(
+                _tinted_pixmap(source, scaled, color),
+                QIcon.Mode.Normal,
+                state,
+            )
+            icon.addPixmap(
+                _tinted_pixmap(source, scaled, "#000000"),
+                QIcon.Mode.Active,
+                state,
+            )
+        icon.addPixmap(
+            _tinted_pixmap(source, scaled, "#6a6a6a"),
+            QIcon.Mode.Disabled,
+            QIcon.State.Off,
+        )
+    return icon
+
+
+@lru_cache(maxsize=16)
+def file_icon(name: str, size: int = CONTROL_ICON_SIZE) -> QIcon:
+    """Icono PNG propio, blanco normal y negro al estar activo."""
+    return _build_file_icon(_icon_source(name), size)
+
+
+@lru_cache(maxsize=4)
+def library_icon(hidden: bool, size: int = CONTROL_ICON_SIZE) -> QIcon:
+    source = _eye_off_source() if hidden else _icon_source("library.png")
+    return _build_file_icon(source, size)
+
+
+@lru_cache(maxsize=4)
+def repeat_icon(one: bool, size: int = CONTROL_ICON_SIZE) -> QIcon:
+    source = _repeat_one_source() if one else _icon_source("repeat.png")
+    return _build_file_icon(source, size)
 
 
 class Backdrop(QWidget):

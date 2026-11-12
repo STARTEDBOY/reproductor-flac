@@ -58,22 +58,19 @@ from library import (
 )
 from mpv_backend import MpvController
 from theme import (
+    CONTROL_ICON_SIZE,
     DEFAULT_COVER_SIZE,
-    PIXEL_EYE,
-    PIXEL_EYE_OFF,
-    PIXEL_MOON,
-    PIXEL_REPEAT,
-    PIXEL_REPEAT_ONE,
-    PIXEL_SHUFFLE,
-    PIXEL_SUN,
     PIXEL_SWAP,
     Backdrop,
     ClickSlider,
     app_icon,
     build_style,
+    file_icon,
     heart_icon,
+    library_icon,
     load_fonts,
     pixel_icon,
+    repeat_icon,
 )
 
 
@@ -214,12 +211,12 @@ class MainWindow(QMainWindow):
 
     def _update_library_button(self) -> None:
         if self.library_hidden:
-            self.hide_library_btn.setIcon(pixel_icon(PIXEL_EYE_OFF))
+            self.hide_library_btn.setIcon(library_icon(True))
             self.hide_library_btn.setToolTip(
                 "Mostrar la biblioteca (Ctrl+H)"
             )
         else:
-            self.hide_library_btn.setIcon(pixel_icon(PIXEL_EYE))
+            self.hide_library_btn.setIcon(library_icon(False))
             self.hide_library_btn.setToolTip(
                 "Ocultar la biblioteca y dejar solo AHORA SUENA (Ctrl+H)"
             )
@@ -454,22 +451,26 @@ class MainWindow(QMainWindow):
         self.sleep_btn.setFixedSize(38, 32)
         self.sleep_btn.setCheckable(True)
         self.sleep_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.sleep_btn.setIconSize(QSize(24, 24))
-        self.sleep_btn.setIcon(pixel_icon(PIXEL_MOON))
+        self.sleep_btn.setIconSize(QSize(CONTROL_ICON_SIZE, CONTROL_ICON_SIZE))
+        self.sleep_btn.setIcon(file_icon("timer.png"))
         self.sleep_btn.setToolTip("Temporizador de apagado")
         self.background_btn = QPushButton()
         self.background_btn.setObjectName("icon")
         self.background_btn.setFixedSize(38, 32)
         self.background_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.background_btn.setIconSize(QSize(24, 24))
-        self.background_btn.setIcon(pixel_icon(PIXEL_SUN))
+        self.background_btn.setIconSize(
+            QSize(CONTROL_ICON_SIZE, CONTROL_ICON_SIZE)
+        )
+        self.background_btn.setIcon(file_icon("background.png"))
         self.background_btn.setToolTip("Color o portada de fondo")
         self.hide_library_btn = QPushButton()
         self.hide_library_btn.setObjectName("icon")
         self.hide_library_btn.setFixedSize(38, 32)
         self.hide_library_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.hide_library_btn.setIconSize(QSize(24, 24))
-        self.hide_library_btn.setIcon(pixel_icon(PIXEL_EYE))
+        self.hide_library_btn.setIconSize(
+            QSize(CONTROL_ICON_SIZE, CONTROL_ICON_SIZE)
+        )
+        self.hide_library_btn.setIcon(library_icon(False))
         self.hide_library_btn.setToolTip(
             "Ocultar la biblioteca y dejar solo AHORA SUENA (Ctrl+H)"
         )
@@ -550,8 +551,10 @@ class MainWindow(QMainWindow):
         self.shuffle_btn.setFixedSize(38, 38)
         self.shuffle_btn.setCheckable(True)
         self.shuffle_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.shuffle_btn.setIconSize(QSize(20, 20))
-        self.shuffle_btn.setIcon(pixel_icon(PIXEL_SHUFFLE))
+        self.shuffle_btn.setIconSize(
+            QSize(CONTROL_ICON_SIZE, CONTROL_ICON_SIZE)
+        )
+        self.shuffle_btn.setIcon(file_icon("shuffle.png"))
         self.shuffle_btn.setToolTip("Reproducción aleatoria (S)")
         self.prev_btn = QPushButton("<<")
         self.prev_btn.setObjectName("transport")
@@ -571,8 +574,10 @@ class MainWindow(QMainWindow):
         self.repeat_btn.setFixedSize(38, 38)
         self.repeat_btn.setCheckable(True)
         self.repeat_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.repeat_btn.setIconSize(QSize(20, 20))
-        self.repeat_btn.setIcon(pixel_icon(PIXEL_REPEAT))
+        self.repeat_btn.setIconSize(
+            QSize(CONTROL_ICON_SIZE, CONTROL_ICON_SIZE)
+        )
+        self.repeat_btn.setIcon(repeat_icon(False))
         self.repeat_btn.setToolTip("Repetir: no / toda la lista / una pista (R)")
         controls.addWidget(self.shuffle_btn)
         controls.addWidget(self.prev_btn)
@@ -1305,8 +1310,7 @@ class MainWindow(QMainWindow):
         self._update_repeat_button()
 
     def _update_repeat_button(self) -> None:
-        rows = PIXEL_REPEAT_ONE if self.repeat == "one" else PIXEL_REPEAT
-        self.repeat_btn.setIcon(pixel_icon(rows))
+        self.repeat_btn.setIcon(repeat_icon(self.repeat == "one"))
         names = {
             "off": "no",
             "all": "toda la lista",

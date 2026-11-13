@@ -25,6 +25,7 @@ from PySide6.QtWidgets import (
 
 DEFAULT_COVER_SIZE = 320
 CONTROL_ICON_SIZE = 28
+TIMER_ICON_SIZE = 24
 ICON_DIR = Path(__file__).resolve().parent / "assets" / "icons"
 
 STYLE_TEMPLATE = """
@@ -252,7 +253,7 @@ def _palette(mode: str, color: str) -> dict[str, str]:
             }
         return values
 
-    if mode == "cover":
+    if mode in ("cover", "image"):
         return {
             "text": "#ffffff",
             "muted": "#d0d0d0",
@@ -610,13 +611,14 @@ def repeat_icon(one: bool, size: int = CONTROL_ICON_SIZE) -> QIcon:
 
 
 class Backdrop(QWidget):
-    """Pinta el fondo de la ventana: negro, color sólido o portada."""
+    """Pinta el fondo de la ventana: negro, color, portada o imagen."""
 
     def __init__(self, parent: QWidget | None = None):
         super().__init__(parent)
         self.mode = "black"
         self.color = QColor("#000000")
         self.cover: QPixmap | None = None
+        self.image: QPixmap | None = None
         self._scaled: QPixmap | None = None
         self._scaled_size = None
         self.setAutoFillBackground(False)
@@ -634,6 +636,11 @@ class Backdrop(QWidget):
         self._scaled = None
         self.update()
 
+    def set_image(self, pixmap: QPixmap | None) -> None:
+        self.image = pixmap
+        self._scaled = None
+        self.update()
+
     def resizeEvent(self, event) -> None:  # noqa: N802 - API de Qt
         self._scaled = None
         super().resizeEvent(event)
@@ -641,13 +648,15 @@ class Backdrop(QWidget):
     def paintEvent(self, event) -> None:  # noqa: N802 - API de Qt
         painter = QPainter(self)
         painter.fillRect(self.rect(), self.color)
-        if (
-            self.mode == "cover"
-            and self.cover is not None
-            and not self.cover.isNull()
-        ):
+        if self.mode == "cover":
+            source = self.cover
+        elif self.mode == "image":
+            source = self.image
+        else:
+            source = None
+        if source is not None and not source.isNull():
             if self._scaled is None or self._scaled_size != self.size():
-                self._scaled = self.cover.scaled(
+                self._scaled = source.scaled(
                     self.size(),
                     Qt.AspectRatioMode.KeepAspectRatioByExpanding,
                     Qt.TransformationMode.SmoothTransformation,
@@ -657,10 +666,16 @@ class Backdrop(QWidget):
             x = (self.width() - scaled.width()) // 2
             y = (self.height() - scaled.height()) // 2
             painter.drawPixmap(x, y, scaled)
-            painter.fillRect(self.rect(), QColor(0, 0, 0, 90))
+            if self.mode == "image":
+                veil = QColor(0, 0, 0, 40)
+                top_alpha, bottom_alpha = 0, 80
+            else:
+                veil = QColor(0, 0, 0, 90)
+                top_alpha, bottom_alpha = 20, 135
+            painter.fillRect(self.rect(), veil)
             gradient = QLinearGradient(0, 0, 0, self.height())
-            gradient.setColorAt(0, QColor(0, 0, 0, 20))
-            gradient.setColorAt(1, QColor(0, 0, 0, 135))
+            gradient.setColorAt(0, QColor(0, 0, 0, top_alpha))
+            gradient.setColorAt(1, QColor(0, 0, 0, bottom_alpha))
             painter.fillRect(self.rect(), gradient)
 
 

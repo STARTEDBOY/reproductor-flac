@@ -41,13 +41,14 @@ puedes usar **EXAMINAR…**), o ejecuta:
 - Clic derecho sobre una pista para ver toda su información: etiquetas, calidad
   y ruta del archivo, con cada etiqueta y su valor alineados por línea base.
 - Temporizador de apagado: pausa la música o cierra el reproductor al terminar.
-- Fondo **negro**, de **color libre** o con la **portada** de la canción actual.
+- Fondo **negro**, de **color libre**, con la **portada** de la canción actual
+  o con una **imagen propia** elegida desde el diálogo de fondo.
 - Panel del reproductor a la **izquierda o a la derecha** con el icono de intercambio.
 - Iconos pixel art propios para aleatorio, repetir, temporizador, fondo y
   ocultar biblioteca, guardados en `assets/icons/`. El de cambiar de lado sigue
   dibujado en la rejilla de 12 × 12.
-- **Temporizador**, **Color o portada de fondo** y **ocultar biblioteca** están
-  juntos en la fila superior de **AHORA SUENA**.
+- **Temporizador**, **Color, portada o imagen de fondo** y **ocultar
+  biblioteca** están juntos en la fila superior de **AHORA SUENA**.
 - Icono del ojo para **ocultar la biblioteca** y dejar solo **AHORA SUENA**.
 - Cambio de carpeta escribiendo, pegando o examinando una ruta.
 - Arrastra una carpeta sobre la ventana para cargarla.
@@ -109,6 +110,8 @@ pip install --user PySide6 mutagen
 
 - Ajustes, favoritos y última sesión:
   `~/.config/STARTED/Reproductor FLAC.conf`
+- La imagen de fondo se guarda como ruta en ese mismo archivo; el reproductor
+  no copia ni modifica la imagen original.
 - Listas personalizadas: `~/.config/STARTED/playlists.json`
 - Caché de la biblioteca: `~/.cache/reproductor-flac/library.json`
 - Caché de portadas: `~/.cache/reproductor-flac/*.img`

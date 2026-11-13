@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
+    QSizePolicy,
     QSpinBox,
     QTableWidget,
     QTableWidgetItem,
@@ -159,17 +160,19 @@ class FolderDialog(QDialog):
 
 
 class BackgroundDialog(QDialog):
-    """Elige fondo negro, un color personalizado o la portada actual."""
+    """Elige fondo negro, color, portada actual o una imagen propia."""
 
     def __init__(
         self,
         mode: str,
         color: str,
+        image_path: str = "",
         parent: QWidget | None = None,
     ):
         super().__init__(parent)
         self.mode = mode
         self.color = color if QColor(color).isValid() else "#000000"
+        self.image_path = image_path
         self.setWindowTitle("Fondo de la ventana")
         self.setModal(True)
         self.setMinimumWidth(540)
@@ -183,7 +186,8 @@ class BackgroundDialog(QDialog):
         layout.addWidget(heading)
 
         description = QLabel(
-            "Elige negro, un color libre o la portada de la canción actual."
+            "Elige negro, un color libre, la portada de la canción actual o "
+            "una imagen propia."
         )
         description.setObjectName("muted")
         description.setWordWrap(True)
@@ -194,9 +198,15 @@ class BackgroundDialog(QDialog):
         self.black_btn = QPushButton("NEGRO")
         self.color_btn = QPushButton("COLOR")
         self.cover_btn = QPushButton("PORTADA")
+        self.image_btn = QPushButton("IMAGEN")
         group = QButtonGroup(self)
         group.setExclusive(True)
-        for button in (self.black_btn, self.color_btn, self.cover_btn):
+        for button in (
+            self.black_btn,
+            self.color_btn,
+            self.cover_btn,
+            self.image_btn,
+        ):
             button.setObjectName("small")
             button.setCheckable(True)
             button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
@@ -222,6 +232,21 @@ class BackgroundDialog(QDialog):
         color_row.addStretch(1)
         layout.addLayout(color_row)
 
+        image_row = QHBoxLayout()
+        image_row.setSpacing(8)
+        self.image_label = QLabel(self._image_name())
+        self.image_label.setObjectName("muted")
+        self.image_label.setToolTip(self.image_path)
+        self.image_label.setSizePolicy(
+            QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred
+        )
+        self.pick_image = QPushButton("ELEGIR IMAGEN…")
+        self.pick_image.setObjectName("small")
+        self.pick_image.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        image_row.addWidget(self.image_label, 1)
+        image_row.addWidget(self.pick_image)
+        layout.addLayout(image_row)
+
         self.error = QLabel("")
         self.error.setObjectName("muted")
         layout.addWidget(self.error)
@@ -243,9 +268,15 @@ class BackgroundDialog(QDialog):
         self._update_swatch()
         self._sync_enabled()
 
-        for button in (self.black_btn, self.color_btn, self.cover_btn):
+        for button in (
+            self.black_btn,
+            self.color_btn,
+            self.cover_btn,
+            self.image_btn,
+        ):
             button.toggled.connect(self._sync_enabled)
         pick.clicked.connect(self._pick)
+        self.pick_image.clicked.connect(self._pick_image)
         self.hex_edit.textChanged.connect(self._hex_changed)
         cancel.clicked.connect(self.reject)
         apply_btn.clicked.connect(self._accept)
@@ -254,13 +285,21 @@ class BackgroundDialog(QDialog):
         self.black_btn.setChecked(mode == "black")
         self.color_btn.setChecked(mode == "color")
         self.cover_btn.setChecked(mode == "cover")
+        self.image_btn.setChecked(mode == "image")
 
     def _current_mode(self) -> str:
         if self.color_btn.isChecked():
             return "color"
         if self.cover_btn.isChecked():
             return "cover"
+        if self.image_btn.isChecked():
+            return "image"
         return "black"
+
+    def _image_name(self) -> str:
+        if self.image_path:
+            return Path(self.image_path).name
+        return "SIN IMAGEN"
 
     def _sync_enabled(self) -> None:
         enabled = self.color_btn.isChecked()
@@ -276,6 +315,22 @@ class BackgroundDialog(QDialog):
             self.color_btn.setChecked(True)
             self.hex_edit.setText(self.color)
             self._update_swatch()
+
+    def _pick_image(self) -> None:
+        chosen, _ = QFileDialog.getOpenFileName(
+            self,
+            "Elegir imagen de fondo",
+            str(Path.home()),
+            "Imágenes (*.png *.jpg *.jpeg *.webp *.bmp *.gif *.avif);;"
+            "Todos los archivos (*)",
+        )
+        if not chosen:
+            return
+        self.image_path = chosen
+        self.image_label.setText(self._image_name())
+        self.image_label.setToolTip(chosen)
+        self.image_btn.setChecked(True)
+        self.error.setText("")
 
     def _hex_changed(self, text: str) -> None:
         chosen = QColor(text.strip())
@@ -296,6 +351,12 @@ class BackgroundDialog(QDialog):
                 self.error.setText("COLOR NO VÁLIDO · USA #RRGGBB")
                 return
             self.color = chosen.name()
+        elif mode == "image":
+            path = Path(self.image_path).expanduser()
+            if not path.is_file():
+                self.error.setText("ELIGE UNA IMAGEN VÁLIDA")
+                return
+            self.image_path = str(path)
         self.mode = mode
         self.accept()
 

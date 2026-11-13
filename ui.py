@@ -61,6 +61,7 @@ from theme import (
     CONTROL_ICON_SIZE,
     DEFAULT_COVER_SIZE,
     PIXEL_SWAP,
+    TIMER_ICON_SIZE,
     Backdrop,
     ClickSlider,
     app_icon,
@@ -119,13 +120,29 @@ class MainWindow(QMainWindow):
 
         self.cover_size = DEFAULT_COVER_SIZE
         self.bg_mode = str(self.settings.value("background_mode", "black") or "black")
-        if self.bg_mode not in ("black", "color", "cover"):
+        if self.bg_mode not in ("black", "color", "cover", "image"):
             self.bg_mode = "black"
         self.bg_color = str(
             self.settings.value("background_color", "#000000") or "#000000"
         )
         if not QColor(self.bg_color).isValid():
             self.bg_color = "#000000"
+        self.bg_image_path = str(
+            self.settings.value("background_image", "") or ""
+        )
+        self.bg_image: QPixmap | None = None
+        if self.bg_image_path:
+            path = Path(self.bg_image_path)
+            if path.is_file():
+                loaded = QPixmap(str(path))
+                if not loaded.isNull():
+                    self.bg_image = loaded
+                else:
+                    self.bg_image_path = ""
+            else:
+                self.bg_image_path = ""
+        if self.bg_mode == "image" and self.bg_image is None:
+            self.bg_mode = "black"
 
         self.player_on_left = str(
             self.settings.value("player_side", "right") or "right"
@@ -451,7 +468,7 @@ class MainWindow(QMainWindow):
         self.sleep_btn.setFixedSize(38, 32)
         self.sleep_btn.setCheckable(True)
         self.sleep_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.sleep_btn.setIconSize(QSize(CONTROL_ICON_SIZE, CONTROL_ICON_SIZE))
+        self.sleep_btn.setIconSize(QSize(TIMER_ICON_SIZE, TIMER_ICON_SIZE))
         self.sleep_btn.setIcon(file_icon("timer.png"))
         self.sleep_btn.setToolTip("Temporizador de apagado")
         self.background_btn = QPushButton()
@@ -462,7 +479,9 @@ class MainWindow(QMainWindow):
             QSize(CONTROL_ICON_SIZE, CONTROL_ICON_SIZE)
         )
         self.background_btn.setIcon(file_icon("background.png"))
-        self.background_btn.setToolTip("Color o portada de fondo")
+        self.background_btn.setToolTip(
+            "Fondo: negro, color, portada o imagen propia"
+        )
         self.hide_library_btn = QPushButton()
         self.hide_library_btn.setObjectName("icon")
         self.hide_library_btn.setFixedSize(38, 32)
@@ -620,6 +639,9 @@ class MainWindow(QMainWindow):
         self.backdrop.set_background(self.bg_mode, self.bg_color)
         self.backdrop.set_cover(
             self.current_cover if self.bg_mode == "cover" else None
+        )
+        self.backdrop.set_image(
+            self.bg_image if self.bg_mode == "image" else None
         )
 
     def _connect_signals(self) -> None:
@@ -1729,14 +1751,25 @@ class MainWindow(QMainWindow):
 
     # ------------------------------------------------------------------ fondo
     def _choose_background(self) -> None:
-        dialog = BackgroundDialog(self.bg_mode, self.bg_color, self)
+        dialog = BackgroundDialog(
+            self.bg_mode, self.bg_color, self.bg_image_path, self
+        )
         dialog.setStyleSheet(self.styleSheet())
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
         self.bg_mode = dialog.mode
         self.bg_color = dialog.color
+        if self.bg_mode == "image":
+            if dialog.image_path != self.bg_image_path:
+                loaded = QPixmap(dialog.image_path)
+                if not loaded.isNull():
+                    self.bg_image = loaded
+                    self.bg_image_path = dialog.image_path
+            if self.bg_image is None:
+                self.bg_mode = "black"
         self.settings.setValue("background_mode", self.bg_mode)
         self.settings.setValue("background_color", self.bg_color)
+        self.settings.setValue("background_image", self.bg_image_path)
         self._apply_style()
 
     # ---------------------------------------------------------- temporizador
@@ -1893,6 +1926,7 @@ class MainWindow(QMainWindow):
         self.settings.setValue("repeat", self.repeat)
         self.settings.setValue("background_mode", self.bg_mode)
         self.settings.setValue("background_color", self.bg_color)
+        self.settings.setValue("background_image", self.bg_image_path)
         self.settings.setValue("favorites", sorted(self.favorites))
         if self.current is not None:
             self.settings.setValue("last_path", self.current.path)

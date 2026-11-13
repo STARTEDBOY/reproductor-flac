@@ -11,6 +11,8 @@ from pathlib import Path
 from PySide6.QtCore import QObject, QProcess, QTimer, Signal
 from PySide6.QtNetwork import QLocalSocket
 
+from i18n import tr
+
 OBSERVED = {
     "time-pos": 1,
     "duration": 2,
@@ -105,7 +107,7 @@ class MpvController(QObject):
         if self._connected or self._quitting:
             return
         if self._proc.state() == QProcess.ProcessState.NotRunning and attempt > 3:
-            self.failed.emit("No se pudo iniciar mpv. ¿Está instalado?")
+            self.failed.emit(tr("mpv_start_failed"))
             return
 
         self._socket.abort()
@@ -115,7 +117,7 @@ class MpvController(QObject):
         if attempt < 50:
             QTimer.singleShot(100, lambda: self._try_connect(attempt + 1))
         else:
-            self.failed.emit("No se pudo conectar con el motor de audio (mpv).")
+            self.failed.emit(tr("mpv_connect_failed"))
 
     # ----------------------------------------------------------------- socket
     def _on_connected(self) -> None:
@@ -136,12 +138,12 @@ class MpvController(QObject):
 
     def _on_process_error(self, _error) -> None:
         if not self._quitting:
-            self.failed.emit("Error al ejecutar mpv.")
+            self.failed.emit(tr("mpv_command_failed"))
 
     def _on_process_finished(self, *_args) -> None:
         self._connected = False
         if not self._quitting:
-            self.failed.emit("El motor de audio se detuvo.")
+            self.failed.emit(tr("mpv_stopped"))
 
     def _send(self, command: list) -> bool:
         if not self._connected:

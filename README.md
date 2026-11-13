@@ -51,6 +51,10 @@ puedes usar **EXAMINAR…**), o ejecuta:
   biblioteca** están juntos en la fila superior de **AHORA SUENA**.
 - Icono del ojo para **ocultar la biblioteca** y dejar solo **AHORA SUENA**.
 - Cambio de carpeta escribiendo, pegando o examinando una ruta.
+- Interfaz en **español**, **inglés**, **japonés** y **ruso**, con un selector de
+  idioma en la cabecera de la biblioteca; la elección se guarda al instante.
+- Encabezados y celdas de las tablas comparten ancho y alineación: los textos a
+  la izquierda y los números o duraciones a la derecha, con espacio entre columnas.
 - Arrastra una carpeta sobre la ventana para cargarla.
 - Recuerda carpeta, volumen, geometría de la ventana, fondo y modos.
 
@@ -101,6 +105,7 @@ pip install --user PySide6 mutagen
 | `theme.py` | Estilos, fondo, sliders e iconos pixel art |
 | `dialogs.py` | Diálogos de carpeta, fondo, listas, temporizador e información |
 | `library.py` | Escaneo de etiquetas, caché de biblioteca y portadas |
+| `i18n.py` | Traducciones de la interfaz y selector de idioma |
 | `mpv_backend.py` | Comunicación con mpv por IPC |
 | `assets/fonts/` | Press Start 2P y VT323 |
 | `assets/icons/` | Iconos PNG de los controles del reproductor |
@@ -108,7 +113,7 @@ pip install --user PySide6 mutagen
 
 ## Datos guardados
 
-- Ajustes, favoritos y última sesión:
+- Ajustes, favoritos, idioma y última sesión:
   `~/.config/STARTED/Reproductor FLAC.conf`
 - La imagen de fondo se guarda como ruta en ese mismo archivo; el reproductor
   no copia ni modifica la imagen original.

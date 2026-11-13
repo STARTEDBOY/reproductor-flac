@@ -47,6 +47,7 @@ from dialogs import (
     SleepDialog,
     TrackInfoDialog,
 )
+from i18n import DEFAULT_LANGUAGE, LANGUAGES, get_language, set_language, tr
 from library import (
     Track,
     format_time,
@@ -72,6 +73,24 @@ from theme import (
     load_fonts,
     pixel_icon,
     repeat_icon,
+)
+
+
+MAIN_HEADER_KEYS = (
+    "col_fav",
+    "col_num",
+    "col_title",
+    "col_artist",
+    "col_album",
+    "col_duration",
+)
+MAIN_ALIGNMENTS = (
+    Qt.AlignmentFlag.AlignCenter,
+    Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+    Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+    Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+    Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+    Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
 )
 
 
@@ -113,6 +132,13 @@ class MainWindow(QMainWindow):
         self.lyric_index = -1
 
         self.settings = QSettings("STARTED", "Reproductor FLAC")
+        self.language = str(
+            self.settings.value("language", DEFAULT_LANGUAGE) or DEFAULT_LANGUAGE
+        )
+        if self.language not in {code for code, _name in LANGUAGES}:
+            self.language = DEFAULT_LANGUAGE
+        set_language(self.language)
+        self.settings.setValue("language", self.language)
         self.shuffle = bool(self.settings.value("shuffle", False, bool))
         self.repeat = str(self.settings.value("repeat", "off"))
         if self.repeat not in ("off", "all", "one"):
@@ -184,7 +210,7 @@ class MainWindow(QMainWindow):
         volume = int(self.settings.value("volume", 70))
         self.mpv = MpvController(volume=volume, parent=self)
 
-        self.setWindowTitle("Reproductor FLAC · STARTED")
+        self.setWindowTitle(f"{tr('app_name')} · STARTED")
         self.setWindowIcon(app_icon(self.base_dir))
         self.setMinimumSize(1080, 760)
         self.resize(1220, 820)
@@ -226,32 +252,36 @@ class MainWindow(QMainWindow):
             self.outer.addWidget(self.library_panel, 1)
             self.outer.addWidget(self.player_panel, 0)
 
+    def _set_table_headers(self) -> None:
+        """Traduce los encabezados y les da la misma alineación que las celdas."""
+        self.table.setHorizontalHeaderLabels(
+            [tr(key) for key in MAIN_HEADER_KEYS]
+        )
+        for column, alignment in enumerate(MAIN_ALIGNMENTS):
+            item = self.table.horizontalHeaderItem(column)
+            if item is not None:
+                item.setTextAlignment(alignment)
+
     def _update_library_button(self) -> None:
         if self.library_hidden:
             self.hide_library_btn.setIcon(library_icon(True))
-            self.hide_library_btn.setToolTip(
-                "Mostrar la biblioteca (Ctrl+H)"
-            )
+            self.hide_library_btn.setToolTip(tr("tooltip_show_library"))
         else:
             self.hide_library_btn.setIcon(library_icon(False))
-            self.hide_library_btn.setToolTip(
-                "Ocultar la biblioteca y dejar solo AHORA SUENA (Ctrl+H)"
-            )
+            self.hide_library_btn.setToolTip(tr("tooltip_hide_library"))
 
     def _toggle_library(self) -> None:
         self.library_hidden = not self.library_hidden
         self.library_panel.setVisible(not self.library_hidden)
         self._apply_panel_order()
         self._update_library_button()
-        self.state_label.setText(
-            "BIBLIOTECA OCULTA"
-            if self.library_hidden
-            else "BIBLIOTECA VISIBLE"
+        self._set_state(
+            "library_hidden" if self.library_hidden else "library_visible"
         )
 
     def _side_tooltip(self) -> str:
-        target = "derecha" if self.player_on_left else "izquierda"
-        return f"Mover el reproductor a la {target} (Ctrl+L)"
+        key = "tooltip_move_right" if self.player_on_left else "tooltip_move_left"
+        return tr(key)
 
     def _toggle_panel_side(self) -> None:
         self.player_on_left = not self.player_on_left
@@ -259,10 +289,8 @@ class MainWindow(QMainWindow):
         self.settings.setValue(
             "player_side", "left" if self.player_on_left else "right"
         )
-        self.state_label.setText(
-            "REPRODUCTOR A LA IZQUIERDA"
-            if self.player_on_left
-            else "REPRODUCTOR A LA DERECHA"
+        self._set_state(
+            "player_left" if self.player_on_left else "player_right"
         )
         self.side_btn.setToolTip(self._side_tooltip())
 
@@ -274,12 +302,22 @@ class MainWindow(QMainWindow):
         layout.setSpacing(8)
 
         header = QHBoxLayout()
-        title = QLabel("BIBLIOTECA")
-        title.setObjectName("section")
-        self.count_label = QLabel("0 PISTAS")
+        self.library_title = QLabel(tr("library"))
+        self.library_title.setObjectName("section")
+        self.count_label = QLabel(tr("track_count", n=0))
         self.count_label.setObjectName("small")
         self.count_label.setAlignment(
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
+        )
+        self.language_combo = QComboBox()
+        self.language_combo.setObjectName("language")
+        self.language_combo.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.language_combo.setFixedWidth(112)
+        self.language_combo.setToolTip(tr("tooltip_language"))
+        for code, name in LANGUAGES:
+            self.language_combo.addItem(name, code)
+        self.language_combo.setCurrentIndex(
+            max(0, [code for code, _name in LANGUAGES].index(self.language))
         )
         self.side_btn = QPushButton()
         self.side_btn.setObjectName("icon")
@@ -288,8 +326,10 @@ class MainWindow(QMainWindow):
         self.side_btn.setIconSize(QSize(20, 20))
         self.side_btn.setIcon(pixel_icon(PIXEL_SWAP))
         self.side_btn.setToolTip(self._side_tooltip())
-        header.addWidget(title)
+        header.addWidget(self.library_title)
         header.addStretch(1)
+        header.addWidget(self.language_combo)
+        header.addSpacing(8)
         header.addWidget(self.count_label)
         header.addSpacing(6)
         header.addWidget(self.side_btn)
@@ -299,9 +339,9 @@ class MainWindow(QMainWindow):
         modes.setSpacing(6)
         self.mode_group = QButtonGroup(self)
         self.mode_group.setExclusive(True)
-        self.library_mode_btn = QPushButton("BIBLIOTECA")
-        self.favorites_mode_btn = QPushButton("FAVORITOS")
-        self.playlists_mode_btn = QPushButton("LISTAS")
+        self.library_mode_btn = QPushButton(tr("library"))
+        self.favorites_mode_btn = QPushButton(tr("favorites"))
+        self.playlists_mode_btn = QPushButton(tr("playlists"))
         for button in (
             self.library_mode_btn,
             self.favorites_mode_btn,
@@ -327,8 +367,8 @@ class MainWindow(QMainWindow):
         self.playlist_combo.setSizePolicy(
             QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
         )
-        self.new_playlist_btn = QPushButton("NUEVA")
-        self.delete_playlist_btn = QPushButton("BORRAR")
+        self.new_playlist_btn = QPushButton(tr("new"))
+        self.delete_playlist_btn = QPushButton(tr("delete"))
         for button in (self.new_playlist_btn, self.delete_playlist_btn):
             button.setObjectName("small")
             button.setFocusPolicy(Qt.FocusPolicy.NoFocus)
@@ -339,8 +379,8 @@ class MainWindow(QMainWindow):
 
         playlist_bottom = QHBoxLayout()
         playlist_bottom.setSpacing(6)
-        self.add_songs_btn = QPushButton("AÑADIR…")
-        self.remove_song_btn = QPushButton("QUITAR")
+        self.add_songs_btn = QPushButton(tr("add_ellipsis"))
+        self.remove_song_btn = QPushButton(tr("remove"))
         self.up_song_btn = QPushButton("↑")
         self.down_song_btn = QPushButton("↓")
         for button in (
@@ -364,7 +404,7 @@ class MainWindow(QMainWindow):
         layout.addWidget(self.playlist_bar)
 
         self.search = QLineEdit()
-        self.search.setPlaceholderText("Buscar por título, artista o álbum…")
+        self.search.setPlaceholderText(tr("search_placeholder"))
         self.search.setClearButtonEnabled(True)
         layout.addWidget(self.search)
 
@@ -383,9 +423,7 @@ class MainWindow(QMainWindow):
         layout.addLayout(filters)
 
         self.table = QTableWidget(0, 6)
-        self.table.setHorizontalHeaderLabels(
-            ["FAV", "#", "TÍTULO", "ARTISTA", "ÁLBUM", "DUR."]
-        )
+        self._set_table_headers()
         self.table.verticalHeader().setVisible(False)
         self.table.setShowGrid(False)
         self.table.setAlternatingRowColors(True)
@@ -412,32 +450,30 @@ class MainWindow(QMainWindow):
         header_view.setSectionResizeMode(4, QHeaderView.ResizeMode.Fixed)
         header_view.setSectionResizeMode(5, QHeaderView.ResizeMode.Fixed)
         self.table.setIconSize(QSize(22, 22))
-        self.table.setColumnWidth(0, 42)
-        self.table.setColumnWidth(1, 44)
-        self.table.setColumnWidth(3, 150)
-        self.table.setColumnWidth(4, 140)
-        self.table.setColumnWidth(5, 60)
+        self.table.setColumnWidth(0, 46)
+        self.table.setColumnWidth(1, 50)
+        self.table.setColumnWidth(3, 160)
+        self.table.setColumnWidth(4, 150)
+        self.table.setColumnWidth(5, 84)
         layout.addWidget(self.table, 1)
 
         footer = QHBoxLayout()
         footer.setSpacing(8)
-        self.path_label = QLabel("Sin biblioteca")
+        self.path_label = QLabel(tr("no_library"))
         self.path_label.setObjectName("muted")
         self.path_label.setSizePolicy(
             QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred
         )
         footer.addWidget(self.path_label, 1)
 
-        self.reload_btn = QPushButton("RECARGAR")
+        self.reload_btn = QPushButton(tr("reload"))
         self.reload_btn.setObjectName("small")
         self.reload_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.reload_btn.setToolTip("Volver a escanear la carpeta actual (F5)")
-        self.folder_btn = QPushButton("CARPETA")
+        self.reload_btn.setToolTip(tr("tooltip_reload"))
+        self.folder_btn = QPushButton(tr("folder"))
         self.folder_btn.setObjectName("small")
         self.folder_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.folder_btn.setToolTip(
-            "Escribir, pegar o examinar otra carpeta (Ctrl+O)"
-        )
+        self.folder_btn.setToolTip(tr("tooltip_folder"))
         footer.addWidget(self.reload_btn)
         footer.addWidget(self.folder_btn)
         layout.addLayout(footer)
@@ -454,9 +490,9 @@ class MainWindow(QMainWindow):
 
         top = QHBoxLayout()
         top.setSpacing(5)
-        now = QLabel("AHORA SUENA")
-        now.setObjectName("section")
-        top.addWidget(now)
+        self.now_label = QLabel(tr("now_playing"))
+        self.now_label.setObjectName("section")
+        top.addWidget(self.now_label)
         top.addStretch(1)
         self.sleep_label = QLabel("")
         self.sleep_label.setObjectName("small")
@@ -470,7 +506,7 @@ class MainWindow(QMainWindow):
         self.sleep_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.sleep_btn.setIconSize(QSize(TIMER_ICON_SIZE, TIMER_ICON_SIZE))
         self.sleep_btn.setIcon(file_icon("timer.png"))
-        self.sleep_btn.setToolTip("Temporizador de apagado")
+        self.sleep_btn.setToolTip(tr("tooltip_sleep"))
         self.background_btn = QPushButton()
         self.background_btn.setObjectName("icon")
         self.background_btn.setFixedSize(38, 32)
@@ -479,9 +515,7 @@ class MainWindow(QMainWindow):
             QSize(CONTROL_ICON_SIZE, CONTROL_ICON_SIZE)
         )
         self.background_btn.setIcon(file_icon("background.png"))
-        self.background_btn.setToolTip(
-            "Fondo: negro, color, portada o imagen propia"
-        )
+        self.background_btn.setToolTip(tr("tooltip_background"))
         self.hide_library_btn = QPushButton()
         self.hide_library_btn.setObjectName("icon")
         self.hide_library_btn.setFixedSize(38, 32)
@@ -490,9 +524,7 @@ class MainWindow(QMainWindow):
             QSize(CONTROL_ICON_SIZE, CONTROL_ICON_SIZE)
         )
         self.hide_library_btn.setIcon(library_icon(False))
-        self.hide_library_btn.setToolTip(
-            "Ocultar la biblioteca y dejar solo AHORA SUENA (Ctrl+H)"
-        )
+        self.hide_library_btn.setToolTip(tr("tooltip_hide_library"))
         top.addWidget(self.sleep_label)
         top.addWidget(self.sleep_btn)
         top.addWidget(self.background_btn)
@@ -512,7 +544,7 @@ class MainWindow(QMainWindow):
         layout.addLayout(cover_row)
         layout.addSpacing(8)
 
-        self.title_label = QLabel("SIN REPRODUCCIÓN")
+        self.title_label = QLabel(tr("nothing_playing"))
         self.title_label.setObjectName("title")
         self.title_label.setWordWrap(True)
         self.title_label.setFixedHeight(68)
@@ -558,7 +590,7 @@ class MainWindow(QMainWindow):
         self.progress.setRange(0, 1000)
         self.progress.setValue(0)
         self.progress.setEnabled(False)
-        self.progress.setToolTip("Clic o arrastra para moverte por la canción")
+        self.progress.setToolTip(tr("tooltip_progress"))
         layout.addWidget(self.progress)
 
         layout.addSpacing(8)
@@ -574,20 +606,21 @@ class MainWindow(QMainWindow):
             QSize(CONTROL_ICON_SIZE, CONTROL_ICON_SIZE)
         )
         self.shuffle_btn.setIcon(file_icon("shuffle.png"))
-        self.shuffle_btn.setToolTip("Reproducción aleatoria (S)")
+        self.shuffle_btn.setToolTip(tr("tooltip_shuffle"))
         self.prev_btn = QPushButton("<<")
         self.prev_btn.setObjectName("transport")
         self.prev_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.prev_btn.setToolTip("Anterior (P)")
-        self.play_btn = QPushButton("PLAY")
+        self.prev_btn.setToolTip(tr("tooltip_prev"))
+        self.play_btn = QPushButton(tr("play"))
         self.play_btn.setObjectName("play")
         self.play_btn.setMinimumSize(118, 44)
         self.play_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.play_btn.setToolTip("Reproducir / pausar (Espacio)")
+        self.play_btn.setToolTip(tr("tooltip_play"))
+        self._play_key = "play"
         self.next_btn = QPushButton(">>")
         self.next_btn.setObjectName("transport")
         self.next_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.next_btn.setToolTip("Siguiente (N)")
+        self.next_btn.setToolTip(tr("tooltip_next"))
         self.repeat_btn = QPushButton()
         self.repeat_btn.setObjectName("icon")
         self.repeat_btn.setFixedSize(38, 38)
@@ -597,7 +630,7 @@ class MainWindow(QMainWindow):
             QSize(CONTROL_ICON_SIZE, CONTROL_ICON_SIZE)
         )
         self.repeat_btn.setIcon(repeat_icon(False))
-        self.repeat_btn.setToolTip("Repetir: no / toda la lista / una pista (R)")
+        self.repeat_btn.setToolTip(tr("tooltip_repeat_off"))
         controls.addWidget(self.shuffle_btn)
         controls.addWidget(self.prev_btn)
         controls.addWidget(self.play_btn, 1)
@@ -609,8 +642,8 @@ class MainWindow(QMainWindow):
 
         volume_row = QHBoxLayout()
         volume_row.setSpacing(8)
-        vol = QLabel("VOL")
-        vol.setObjectName("small")
+        self.volume_title = QLabel(tr("volume"))
+        self.volume_title.setObjectName("small")
         self.volume = ClickSlider(Qt.Orientation.Horizontal)
         self.volume.setRange(0, 100)
         self.volume.setValue(self.mpv.volume)
@@ -621,14 +654,16 @@ class MainWindow(QMainWindow):
         self.volume_value.setAlignment(
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
         )
-        volume_row.addWidget(vol)
+        volume_row.addWidget(self.volume_title)
         volume_row.addStretch(1)
         volume_row.addWidget(self.volume)
         volume_row.addWidget(self.volume_value)
         layout.addLayout(volume_row)
 
-        self.state_label = QLabel("INICIANDO…")
+        self.state_label = QLabel(tr("starting"))
         self.state_label.setObjectName("state")
+        self._state_key = "starting"
+        self._state_kwargs: dict[str, object] = {}
         layout.addWidget(self.state_label)
 
         self.cover_label.setPixmap(self._placeholder())
@@ -644,11 +679,100 @@ class MainWindow(QMainWindow):
             self.bg_image if self.bg_mode == "image" else None
         )
 
+    # -------------------------------------------------------------- idioma
+    def _set_state(self, key: str, **kwargs: object) -> None:
+        """Guarda el estado actual para poder retraducirlo al cambiar idioma."""
+        self._state_key = key
+        self._state_kwargs = kwargs
+        self.state_label.setText(tr(key, **kwargs))
+
+    def _refresh_state_text(self) -> None:
+        self.state_label.setText(tr(self._state_key, **self._state_kwargs))
+
+    def _set_play_text(self, key: str) -> None:
+        self._play_key = key
+        self.play_btn.setText(tr(key))
+
+    def _refresh_play_text(self) -> None:
+        self.play_btn.setText(tr(self._play_key))
+
+    def _update_window_title(self) -> None:
+        root = self.path_label.toolTip() if hasattr(self, "path_label") else ""
+        if root:
+            self.setWindowTitle(f"{tr('app_name')} · {Path(root).name or root}")
+        else:
+            self.setWindowTitle(f"{tr('app_name')} · STARTED")
+
+    def _language_changed(self, index: int) -> None:
+        code = self.language_combo.itemData(index)
+        if not code or code == get_language():
+            return
+        self.language = str(code)
+        set_language(self.language)
+        self.settings.setValue("language", self.language)
+        self._retranslate_ui()
+
+    def _retranslate_ui(self) -> None:
+        """Actualiza todos los textos visibles sin reconstruir la ventana."""
+        self._update_window_title()
+
+        self.library_title.setText(tr("library"))
+        self.language_combo.setToolTip(tr("tooltip_language"))
+        self.library_mode_btn.setText(tr("library"))
+        self.favorites_mode_btn.setText(tr("favorites"))
+        self.playlists_mode_btn.setText(tr("playlists"))
+        self.new_playlist_btn.setText(tr("new"))
+        self.delete_playlist_btn.setText(tr("delete"))
+        self.add_songs_btn.setText(tr("add_ellipsis"))
+        self.remove_song_btn.setText(tr("remove"))
+        self.search.setPlaceholderText(tr("search_placeholder"))
+        self._set_table_headers()
+        if not self.path_label.toolTip():
+            self.path_label.setText(tr("no_library"))
+        self.reload_btn.setText(tr("reload"))
+        self.reload_btn.setToolTip(tr("tooltip_reload"))
+        self.folder_btn.setText(tr("folder"))
+        self.folder_btn.setToolTip(tr("tooltip_folder"))
+        self.side_btn.setToolTip(self._side_tooltip())
+        self._update_library_button()
+
+        self.now_label.setText(tr("now_playing"))
+        self.sleep_btn.setToolTip(tr("tooltip_sleep"))
+        self.background_btn.setToolTip(tr("tooltip_background"))
+        self.progress.setToolTip(tr("tooltip_progress"))
+        self.shuffle_btn.setToolTip(tr("tooltip_shuffle"))
+        self.prev_btn.setToolTip(tr("tooltip_prev"))
+        self.play_btn.setToolTip(tr("tooltip_play"))
+        self.next_btn.setToolTip(tr("tooltip_next"))
+        self._update_repeat_button()
+        self.volume_title.setText(tr("volume"))
+        if self.current is None:
+            self.title_label.setText(tr("nothing_playing"))
+        else:
+            self.artist_label.setText(self.current.display_artist)
+            album = self.current.display_album
+            quality = self.current.quality
+            self.meta_label.setText(
+                f"{album} · {quality}" if quality else album
+            )
+        self._refresh_play_text()
+        self._refresh_state_text()
+        self._update_sleep_label()
+        if self.current_cover is None:
+            self._render_cover()
+
+        artist = self.artist_combo.currentData() or ""
+        album = self.album_combo.currentData() or ""
+        self._populate_filters()
+        self._restore_filters(artist, album)
+        self._apply_filters()
+
     def _connect_signals(self) -> None:
         self.search.textChanged.connect(self._apply_filters)
         self.search.returnPressed.connect(self._search_enter)
         self.artist_combo.currentIndexChanged.connect(self._artist_changed)
         self.album_combo.currentIndexChanged.connect(self._apply_filters)
+        self.language_combo.currentIndexChanged.connect(self._language_changed)
         self.table.itemActivated.connect(self._on_item_activated)
         self.table.cellClicked.connect(self._on_cell_clicked)
         self.table.customContextMenuRequested.connect(self._table_menu)
@@ -757,18 +881,18 @@ class MainWindow(QMainWindow):
             if candidate and Path(candidate).is_dir():
                 self.load_library(candidate)
                 return
-        self.state_label.setText("ELIGE UNA CARPETA")
-        self.path_label.setText("Sin biblioteca")
-        self.count_label.setText("0 PISTAS")
+        self._set_state("choose_folder")
+        self.path_label.setText(tr("no_library"))
+        self.count_label.setText(tr("track_count", n=0))
 
     def load_library(self, path: str, remember: bool = True) -> None:
         folder = Path(path)
         if not folder.is_dir():
-            self.state_label.setText("CARPETA NO VÁLIDA")
+            self._set_state("invalid_folder")
             return
         if self.scan_thread is not None:
             self.pending_library = str(folder)
-            self.state_label.setText("ESPERANDO ESCANEO…")
+            self._set_state("waiting_scan")
             return
 
         if remember:
@@ -783,9 +907,9 @@ class MainWindow(QMainWindow):
             # Mostrar la lista guardada al instante; el escaneo solo comprueba
             # si hay archivos nuevos o modificados.
             self._show_library(cached, root, restore_session=True)
-            self.state_label.setText("ACTUALIZANDO BIBLIOTECA…")
+            self._set_state("updating_library")
         else:
-            self.state_label.setText("ESCANEANDO…")
+            self._set_state("scanning")
 
         self.scan_thread = ScanWorker(root)
         self.scan_thread.done.connect(self._library_loaded)
@@ -810,7 +934,7 @@ class MainWindow(QMainWindow):
         self.path_label.setToolTip(root)
         self.folder_btn.setEnabled(True)
         self.reload_btn.setEnabled(True)
-        self.setWindowTitle(f"Reproductor FLAC · {Path(root).name or root}")
+        self._update_window_title()
         if restore_session and tracks:
             self.table.setFocus()
             QTimer.singleShot(0, self._restore_last_session)
@@ -836,23 +960,23 @@ class MainWindow(QMainWindow):
             self.folder_btn.setEnabled(True)
             self.reload_btn.setEnabled(True)
             if tracks:
-                self.state_label.setText("BIBLIOTECA LISTA")
+                self._set_state("library_ready")
                 if not self._session_restored:
                     QTimer.singleShot(0, self._restore_last_session)
             else:
-                self.state_label.setText("SIN ARCHIVOS DE AUDIO")
-            self.setWindowTitle(f"Reproductor FLAC · {Path(root).name or root}")
+                self._set_state("no_audio_files")
+            self._update_window_title()
             return
 
         self._show_library(tracks, root, restore_session=True)
         if tracks:
-            self.state_label.setText("BIBLIOTECA LISTA")
+            self._set_state("library_ready")
             self.table.setFocus()
         else:
-            self.state_label.setText("SIN ARCHIVOS DE AUDIO")
+            self._set_state("no_audio_files")
 
     def _scan_failed(self, message: str) -> None:
-        self.state_label.setText("ERROR AL ESCANEAR")
+        self._set_state("scan_error")
         self.path_label.setToolTip(message)
         self.folder_btn.setEnabled(True)
         self.reload_btn.setEnabled(True)
@@ -898,7 +1022,7 @@ class MainWindow(QMainWindow):
     def _populate_filters(self) -> None:
         self.artist_combo.blockSignals(True)
         self.artist_combo.clear()
-        self.artist_combo.addItem("TODOS LOS ARTISTAS", "")
+        self.artist_combo.addItem(tr("all_artists"), "")
         artists = sorted(
             {track.display_artist for track in self.tracks}, key=str.casefold
         )
@@ -912,7 +1036,7 @@ class MainWindow(QMainWindow):
         artist = self.artist_combo.currentData() or ""
         self.album_combo.blockSignals(True)
         self.album_combo.clear()
-        self.album_combo.addItem("TODOS LOS ÁLBUMES", "")
+        self.album_combo.addItem(tr("all_albums"), "")
         albums = sorted(
             {
                 track.display_album
@@ -973,20 +1097,28 @@ class MainWindow(QMainWindow):
         self._fill_table()
 
         if self.mode == "favorites":
-            self.count_label.setText(f"{len(self.visible)} FAVORITOS")
+            self.count_label.setText(
+                tr("favorites_count", n=len(self.visible))
+            )
         elif self.mode == "playlist":
-            name = "SIN LISTA"
+            name = tr("no_playlist")
             if (
                 self.current_playlist is not None
                 and 0 <= self.current_playlist < len(self.playlists)
             ):
                 name = self.playlists[self.current_playlist]["name"]
-            self.count_label.setText(f"{len(self.visible)} PISTAS · {name.upper()}")
+            self.count_label.setText(
+                tr("playlist_count", n=len(self.visible), name=name.upper())
+            )
         elif len(self.visible) == len(self.tracks):
             self.count_label.setText(library_summary(self.tracks))
         else:
             self.count_label.setText(
-                f"{len(self.visible)} / {len(self.tracks)} PISTAS"
+                tr(
+                    "filtered_count",
+                    n=len(self.visible),
+                    total=len(self.tracks),
+                )
             )
 
     def _playlist_tracks(self) -> list[Track]:
@@ -1022,14 +1154,10 @@ class MainWindow(QMainWindow):
                 item.setFlags(
                     Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable
                 )
+                item.setTextAlignment(MAIN_ALIGNMENTS[column])
                 if column == 0:
                     item.setIcon(heart_icon(22, is_fav))
-                    item.setToolTip("Marcar o quitar de favoritos")
-                elif column in (1, 5):
-                    item.setTextAlignment(
-                        Qt.AlignmentFlag.AlignRight
-                        | Qt.AlignmentFlag.AlignVCenter
-                    )
+                    item.setToolTip(tr("tooltip_favorite"))
                 if column == 2:
                     item.setToolTip(track.path)
                 self.table.setItem(row, column, item)
@@ -1107,8 +1235,8 @@ class MainWindow(QMainWindow):
         self._update_cover(track)
 
         self.progress.setEnabled(True)
-        self.play_btn.setText("PAUSA" if autoplay else "PLAY")
-        self.state_label.setText("CARGANDO…" if autoplay else "RETOMANDO…")
+        self._set_play_text("pause" if autoplay else "play")
+        self._set_state("loading" if autoplay else "resuming")
         self._mark_playing()
         self.mpv.load(
             track.path,
@@ -1190,8 +1318,8 @@ class MainWindow(QMainWindow):
         self.progress.blockSignals(False)
         self.progress.setEnabled(False)
         self.time_current.setText("0:00")
-        self.play_btn.setText("PLAY")
-        self.state_label.setText("FIN DE LA LISTA")
+        self._set_play_text("play")
+        self._set_state("end_of_queue")
         self._clear_lyrics()
 
     def _load_lyrics(self, track: Track) -> None:
@@ -1265,21 +1393,19 @@ class MainWindow(QMainWindow):
     def _on_paused(self, paused: bool) -> None:
         if self.current is None or self.finished_queue:
             return
-        self.play_btn.setText("PLAY" if paused else "PAUSA")
-        self.state_label.setText("EN PAUSA" if paused else "REPRODUCIENDO")
+        self._set_play_text("play" if paused else "pause")
+        self._set_state("paused" if paused else "playing")
 
     def _on_loaded(self) -> None:
         if self.current is not None and not self.finished_queue:
-            self.state_label.setText(
-                "EN PAUSA" if self.mpv.paused else "REPRODUCIENDO"
-            )
+            self._set_state("paused" if self.mpv.paused else "playing")
 
     def _on_ready(self) -> None:
         if not self.tracks:
-            self.state_label.setText("MOTOR LISTO")
+            self._set_state("engine_ready")
 
     def _on_failed(self, message: str) -> None:
-        self.state_label.setText("ERROR DE AUDIO")
+        self._set_state("audio_error")
         self.state_label.setToolTip(message)
 
     def _seek_scrub(self, value: int) -> None:
@@ -1333,14 +1459,12 @@ class MainWindow(QMainWindow):
 
     def _update_repeat_button(self) -> None:
         self.repeat_btn.setIcon(repeat_icon(self.repeat == "one"))
-        names = {
-            "off": "no",
-            "all": "toda la lista",
-            "one": "una pista",
-        }
-        self.repeat_btn.setToolTip(
-            f"Repetir: {names[self.repeat]} (R)"
-        )
+        key = {
+            "off": "tooltip_repeat_off",
+            "all": "tooltip_repeat_all",
+            "one": "tooltip_repeat_one",
+        }[self.repeat]
+        self.repeat_btn.setToolTip(tr(key))
 
     # ------------------------------------------------------------- favoritos
     def _on_cell_clicked(self, row: int, column: int) -> None:
@@ -1412,7 +1536,7 @@ class MainWindow(QMainWindow):
             )
             temporary.replace(self.playlists_file)
         except OSError:
-            self.state_label.setText("NO SE PUDO GUARDAR LA LISTA")
+            self._set_state("playlists_save_error")
 
     def _set_mode(self, mode: str) -> None:
         if mode not in ("library", "favorites", "playlist"):
@@ -1463,8 +1587,8 @@ class MainWindow(QMainWindow):
 
     def _new_playlist(self, add_track: Track | None = None) -> bool:
         dialog = NameDialog(
-            "Nueva lista",
-            "NOMBRE DE LA LISTA",
+            tr("new_playlist_title"),
+            tr("playlist_name_label"),
             "",
             self,
         )
@@ -1476,7 +1600,7 @@ class MainWindow(QMainWindow):
             playlist["name"].casefold() == name.casefold()
             for playlist in self.playlists
         ):
-            self.state_label.setText("ESA LISTA YA EXISTE")
+            self._set_state("playlist_exists")
             return False
         paths = [add_track.path] if add_track is not None else []
         self.playlists.append({"name": name, "paths": paths})
@@ -1493,8 +1617,8 @@ class MainWindow(QMainWindow):
             return
         name = self.playlists[self.current_playlist]["name"]
         if not self._confirm(
-            "BORRAR LISTA",
-            f"¿Borrar la lista «{name}»?\n\nLas canciones no se borran del disco.",
+            tr("delete_playlist_title"),
+            tr("delete_playlist_message", name=name),
         ):
             return
         del self.playlists[self.current_playlist]
@@ -1514,7 +1638,7 @@ class MainWindow(QMainWindow):
             if not self._new_playlist():
                 return
         if not self.tracks:
-            self.state_label.setText("LA BIBLIOTECA ESTÁ VACÍA")
+            self._set_state("library_empty")
             return
         playlist = self.playlists[self.current_playlist]
         dialog = PlaylistPickerDialog(self.tracks, playlist["name"], self)
@@ -1532,23 +1656,23 @@ class MainWindow(QMainWindow):
             self._save_playlists()
             self._refresh_playlist_combo()
             self._apply_filters()
-            self.state_label.setText(f"{added} CANCIÓN(ES) AÑADIDA(S)")
+            self._set_state("songs_added", n=added)
         else:
-            self.state_label.setText("YA ESTABAN EN LA LISTA")
+            self._set_state("already_in_playlist")
 
     def _add_track_to_playlist(self, index: int, track: Track) -> None:
         if not (0 <= index < len(self.playlists)):
             return
         playlist = self.playlists[index]
         if track.path in playlist["paths"]:
-            self.state_label.setText("YA ESTÁ EN LA LISTA")
+            self._set_state("already_in_playlist_one")
             return
         playlist["paths"].append(track.path)
         self._save_playlists()
         self._refresh_playlist_combo()
         if self.mode == "playlist" and self.current_playlist == index:
             self._apply_filters()
-        self.state_label.setText(f"AÑADIDA A «{playlist['name']}»")
+        self._set_state("added_to_playlist", name=playlist["name"])
 
     def _remove_from_playlist(self) -> None:
         if (
@@ -1609,17 +1733,17 @@ class MainWindow(QMainWindow):
         menu = QMenu(self)
         menu.setStyleSheet(self.styleSheet())
 
-        favorite_text = (
-            "QUITAR DE FAVORITOS"
+        favorite_text = tr(
+            "remove_from_favorites"
             if track.path in self.favorites
-            else "AÑADIR A FAVORITOS"
+            else "add_to_favorites"
         )
         favorite_action = menu.addAction(favorite_text)
         favorite_action.triggered.connect(
             lambda _checked=False: self._toggle_favorite(track)
         )
 
-        add_menu = menu.addMenu("AÑADIR A LISTA")
+        add_menu = menu.addMenu(tr("add_to_playlist"))
         if self.playlists:
             for playlist_index, playlist in enumerate(self.playlists):
                 action = add_menu.addAction(playlist["name"])
@@ -1629,31 +1753,31 @@ class MainWindow(QMainWindow):
                     )
                 )
         else:
-            empty = add_menu.addAction("SIN LISTAS")
+            empty = add_menu.addAction(tr("no_playlists"))
             empty.setEnabled(False)
         add_menu.addSeparator()
-        new_action = add_menu.addAction("NUEVA LISTA…")
+        new_action = add_menu.addAction(tr("new_playlist_menu"))
         new_action.triggered.connect(
             lambda _checked=False: self._new_playlist(track)
         )
 
         if self.mode == "playlist" and self.current_playlist is not None:
             menu.addSeparator()
-            remove_action = menu.addAction("QUITAR DE LA LISTA")
+            remove_action = menu.addAction(tr("remove_from_playlist"))
             remove_action.triggered.connect(
                 lambda _checked=False: self._remove_from_playlist()
             )
-            up_action = menu.addAction("MOVER ARRIBA")
+            up_action = menu.addAction(tr("move_up"))
             up_action.triggered.connect(
                 lambda _checked=False: self._move_playlist_track(-1)
             )
-            down_action = menu.addAction("MOVER ABAJO")
+            down_action = menu.addAction(tr("move_down"))
             down_action.triggered.connect(
                 lambda _checked=False: self._move_playlist_track(1)
             )
 
         menu.addSeparator()
-        info_action = menu.addAction("VER INFORMACIÓN")
+        info_action = menu.addAction(tr("view_info"))
         info_action.triggered.connect(
             lambda _checked=False, t=track: self._show_track_info(t)
         )
@@ -1677,9 +1801,9 @@ class MainWindow(QMainWindow):
         yes_button = box.button(QMessageBox.StandardButton.Yes)
         no_button = box.button(QMessageBox.StandardButton.No)
         if yes_button is not None:
-            yes_button.setText("SÍ")
+            yes_button.setText(tr("yes"))
         if no_button is not None:
-            no_button.setText("NO")
+            no_button.setText(tr("no"))
         return box.exec() == QMessageBox.StandardButton.Yes
 
     # ---------------------------------------------------------------- portada
@@ -1721,7 +1845,7 @@ class MainWindow(QMainWindow):
         painter.drawText(
             pixmap.rect(),
             Qt.AlignmentFlag.AlignCenter,
-            "SIN PORTADA",
+            tr("no_cover"),
         )
         painter.end()
         return pixmap
@@ -1738,7 +1862,7 @@ class MainWindow(QMainWindow):
         self.progress.setEnabled(False)
         self.time_current.setText("0:00")
         self.time_total.setText("0:00")
-        self.title_label.setText("SIN REPRODUCCIÓN")
+        self.title_label.setText(tr("nothing_playing"))
         self.title_label.setToolTip("")
         self.artist_label.setText("—")
         self.meta_label.setText("")
@@ -1746,8 +1870,8 @@ class MainWindow(QMainWindow):
         self.cover_label.setPixmap(self._placeholder())
         if self.bg_mode == "cover":
             self.backdrop.set_cover(None)
-        self.play_btn.setText("PLAY")
-        self.state_label.setText("LISTO")
+        self._set_play_text("play")
+        self._set_state("ready")
 
     # ------------------------------------------------------------------ fondo
     def _choose_background(self) -> None:
@@ -1794,12 +1918,15 @@ class MainWindow(QMainWindow):
         self.sleep_timer.start()
         self.sleep_btn.setChecked(True)
         self._update_sleep_label()
-        self.state_label.setText("TEMPORIZADOR ACTIVO")
+        self._set_state("sleep_active")
 
     def _update_sleep_label(self) -> None:
         if self.sleep_seconds_left > 0:
             self.sleep_label.setText(
-                f"DORMIR {format_time(self.sleep_seconds_left)}"
+                tr(
+                    "sleep_label",
+                    time=format_time(self.sleep_seconds_left),
+                )
             )
         else:
             self.sleep_label.setText("")
@@ -1816,11 +1943,11 @@ class MainWindow(QMainWindow):
         self.sleep_btn.setChecked(False)
         self.sleep_label.setText("")
         if self.sleep_action == "close":
-            self.state_label.setText("CERRANDO…")
+            self._set_state("closing")
             self.close()
         else:
             self.mpv.pause()
-            self.state_label.setText("TEMPORIZADOR: EN PAUSA")
+            self._set_state("sleep_paused")
 
     def _cancel_sleep_timer(self) -> None:
         was_active = self.sleep_seconds_left > 0
@@ -1829,7 +1956,7 @@ class MainWindow(QMainWindow):
         self.sleep_label.setText("")
         self.sleep_btn.setChecked(False)
         if was_active:
-            self.state_label.setText("TEMPORIZADOR CANCELADO")
+            self._set_state("sleep_cancelled")
 
     # ------------------------------------------------------------- sesión
     def _restore_last_session(self) -> None:
@@ -1850,9 +1977,7 @@ class MainWindow(QMainWindow):
         self._play_track(
             track, start_position=position, autoplay=False
         )
-        self.state_label.setText(
-            f"RETOMANDO EN {format_time(position)}"
-        )
+        self._set_state("resuming_at", time=format_time(position))
 
     # -------------------------------------------------------------- keyboard
     def eventFilter(self, watched, event) -> bool:  # noqa: N802 - API de Qt

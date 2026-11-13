@@ -84,6 +84,11 @@ QComboBox {
     padding: 6px 8px;
 }
 QComboBox:hover { border-color: %(text)s; }
+QComboBox#language {
+    font-family: 'Press Start 2P';
+    font-size: 7px;
+    padding: 5px 6px;
+}
 QComboBox QAbstractItemView {
     background-color: %(popup_bg)s;
     border: 1px solid %(border)s;
@@ -99,7 +104,7 @@ QTableWidget {
     selection-color: %(selection_text)s;
 }
 QTableWidget::item {
-    padding: 2px 8px;
+    padding: 3px 10px;
     border-bottom: 1px solid %(grid)s;
 }
 QTableWidget::item:selected {
@@ -111,7 +116,7 @@ QHeaderView::section {
     color: %(muted)s;
     border: 0;
     border-bottom: 1px solid %(border)s;
-    padding: 7px 8px;
+    padding: 7px 10px;
     font-family: 'Press Start 2P';
     font-size: 8px;
 }

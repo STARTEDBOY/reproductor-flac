@@ -18,6 +18,8 @@ from pathlib import Path
 import mutagen
 from mutagen.flac import FLAC, Picture
 
+from i18n import tr
+
 SUPPORTED = {
     ".flac", ".mp3", ".ogg", ".oga", ".opus", ".m4a", ".mp4",
     ".wav", ".aiff", ".aif", ".ape", ".wv",
@@ -47,11 +49,11 @@ class Track:
 
     @property
     def display_artist(self) -> str:
-        return self.artist or self.albumartist or "Artista desconocido"
+        return self.artist or self.albumartist or tr("unknown_artist")
 
     @property
     def display_album(self) -> str:
-        return self.album or "Álbum desconocido"
+        return self.album or tr("unknown_album")
 
     @property
     def album_key(self) -> str:
@@ -264,7 +266,7 @@ def load_cached_library(root: str | Path) -> list[Track] | None:
 def scan_library(root: str | Path, use_cache: bool = True) -> list[Track]:
     root = Path(root)
     if not root.is_dir():
-        raise FileNotFoundError(f"No existe la carpeta: {root}")
+        raise FileNotFoundError(tr("folder_not_found", root=root))
 
     key = _root_key(root)
     cached_roots = _read_library_cache() if use_cache else {}
@@ -395,7 +397,7 @@ def get_cover_bytes(track: Track) -> bytes | None:
 
 def library_summary(tracks: list[Track]) -> str:
     albums = len({(t.albumartist or t.artist, t.album) for t in tracks})
-    return f"{len(tracks)} PISTAS · {albums} ÁLBUMES"
+    return tr("summary", tracks=len(tracks), albums=albums)
 
 
 # --------------------------------------------------------------- letras

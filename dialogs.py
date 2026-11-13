@@ -28,6 +28,15 @@ from PySide6.QtWidgets import (
 )
 
 from library import Track, format_time
+from i18n import tr
+
+PICKER_HEADER_KEYS = ("col_title", "col_artist", "col_album", "col_duration")
+PICKER_ALIGNMENTS = (
+    Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+    Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+    Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
+    Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
+)
 
 
 class NameDialog(QDialog):
@@ -65,10 +74,10 @@ class NameDialog(QDialog):
 
         row = QHBoxLayout()
         row.setSpacing(8)
-        cancel = QPushButton("CANCELAR")
+        cancel = QPushButton(tr("cancel"))
         cancel.setObjectName("small")
         cancel.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        accept = QPushButton("GUARDAR")
+        accept = QPushButton(tr("save"))
         accept.setObjectName("small")
         accept.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         row.addStretch(1)
@@ -83,7 +92,7 @@ class NameDialog(QDialog):
     def _accept(self) -> None:
         text = self.edit.text().strip()
         if not text:
-            self.error.setText("ESCRIBE UN NOMBRE")
+            self.error.setText(tr("name_required"))
             return
         self.value = text
         self.accept()
@@ -95,7 +104,7 @@ class FolderDialog(QDialog):
     def __init__(self, current: str, parent: QWidget | None = None):
         super().__init__(parent)
         self.selected_path = ""
-        self.setWindowTitle("Cambiar carpeta de música")
+        self.setWindowTitle(tr("folder_dialog_title"))
         self.setModal(True)
         self.setMinimumWidth(560)
 
@@ -103,7 +112,7 @@ class FolderDialog(QDialog):
         layout.setContentsMargins(20, 20, 20, 16)
         layout.setSpacing(10)
 
-        title = QLabel("RUTA DE LA BIBLIOTECA")
+        title = QLabel(tr("library_path"))
         title.setObjectName("section")
         layout.addWidget(title)
 
@@ -117,13 +126,13 @@ class FolderDialog(QDialog):
 
         row = QHBoxLayout()
         row.setSpacing(8)
-        browse = QPushButton("EXAMINAR…")
+        browse = QPushButton(tr("browse"))
         browse.setObjectName("small")
         browse.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        cancel = QPushButton("CANCELAR")
+        cancel = QPushButton(tr("cancel"))
         cancel.setObjectName("small")
         cancel.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        accept = QPushButton("CARGAR")
+        accept = QPushButton(tr("load"))
         accept.setObjectName("small")
         accept.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         row.addWidget(browse)
@@ -140,7 +149,7 @@ class FolderDialog(QDialog):
     def _browse(self) -> None:
         start = self.path_edit.text().strip() or str(Path.home())
         folder = QFileDialog.getExistingDirectory(
-            self, "Elegir carpeta de música", start
+            self, tr("folder_pick_title"), start
         )
         if folder:
             self.path_edit.setText(folder)
@@ -149,11 +158,11 @@ class FolderDialog(QDialog):
     def _accept(self) -> None:
         text = self.path_edit.text().strip()
         if not text:
-            self.error.setText("ESCRIBE UNA RUTA")
+            self.error.setText(tr("path_required"))
             return
         path = Path(text).expanduser()
         if not path.is_dir():
-            self.error.setText("LA CARPETA NO EXISTE")
+            self.error.setText(tr("folder_missing"))
             return
         self.selected_path = str(path)
         self.accept()
@@ -173,7 +182,7 @@ class BackgroundDialog(QDialog):
         self.mode = mode
         self.color = color if QColor(color).isValid() else "#000000"
         self.image_path = image_path
-        self.setWindowTitle("Fondo de la ventana")
+        self.setWindowTitle(tr("background_title"))
         self.setModal(True)
         self.setMinimumWidth(540)
 
@@ -181,24 +190,21 @@ class BackgroundDialog(QDialog):
         layout.setContentsMargins(20, 20, 20, 16)
         layout.setSpacing(12)
 
-        heading = QLabel("FONDO DE LA VENTANA")
+        heading = QLabel(tr("background_heading"))
         heading.setObjectName("section")
         layout.addWidget(heading)
 
-        description = QLabel(
-            "Elige negro, un color libre, la portada de la canción actual o "
-            "una imagen propia."
-        )
+        description = QLabel(tr("background_description"))
         description.setObjectName("muted")
         description.setWordWrap(True)
         layout.addWidget(description)
 
         options = QHBoxLayout()
         options.setSpacing(8)
-        self.black_btn = QPushButton("NEGRO")
-        self.color_btn = QPushButton("COLOR")
-        self.cover_btn = QPushButton("PORTADA")
-        self.image_btn = QPushButton("IMAGEN")
+        self.black_btn = QPushButton(tr("black"))
+        self.color_btn = QPushButton(tr("color"))
+        self.cover_btn = QPushButton(tr("cover"))
+        self.image_btn = QPushButton(tr("image"))
         group = QButtonGroup(self)
         group.setExclusive(True)
         for button in (
@@ -223,7 +229,7 @@ class BackgroundDialog(QDialog):
         self.hex_edit.setMaxLength(9)
         self.hex_edit.setFixedWidth(130)
         self.hex_edit.setPlaceholderText("#RRGGBB")
-        pick = QPushButton("ELEGIR COLOR…")
+        pick = QPushButton(tr("pick_color"))
         pick.setObjectName("small")
         pick.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         color_row.addWidget(self.swatch)
@@ -240,7 +246,7 @@ class BackgroundDialog(QDialog):
         self.image_label.setSizePolicy(
             QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred
         )
-        self.pick_image = QPushButton("ELEGIR IMAGEN…")
+        self.pick_image = QPushButton(tr("pick_image"))
         self.pick_image.setObjectName("small")
         self.pick_image.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         image_row.addWidget(self.image_label, 1)
@@ -253,10 +259,10 @@ class BackgroundDialog(QDialog):
 
         row = QHBoxLayout()
         row.setSpacing(8)
-        cancel = QPushButton("CANCELAR")
+        cancel = QPushButton(tr("cancel"))
         cancel.setObjectName("small")
         cancel.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        apply_btn = QPushButton("APLICAR")
+        apply_btn = QPushButton(tr("apply"))
         apply_btn.setObjectName("small")
         apply_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         row.addStretch(1)
@@ -299,7 +305,7 @@ class BackgroundDialog(QDialog):
     def _image_name(self) -> str:
         if self.image_path:
             return Path(self.image_path).name
-        return "SIN IMAGEN"
+        return tr("no_image")
 
     def _sync_enabled(self) -> None:
         enabled = self.color_btn.isChecked()
@@ -308,7 +314,7 @@ class BackgroundDialog(QDialog):
 
     def _pick(self) -> None:
         chosen = QColorDialog.getColor(
-            QColor(self.color), self, "Elegir color de fondo"
+            QColor(self.color), self, tr("color_dialog_title")
         )
         if chosen.isValid():
             self.color = chosen.name()
@@ -319,10 +325,9 @@ class BackgroundDialog(QDialog):
     def _pick_image(self) -> None:
         chosen, _ = QFileDialog.getOpenFileName(
             self,
-            "Elegir imagen de fondo",
+            tr("image_dialog_title"),
             str(Path.home()),
-            "Imágenes (*.png *.jpg *.jpeg *.webp *.bmp *.gif *.avif);;"
-            "Todos los archivos (*)",
+            f"{tr('images_filter')};;{tr('all_files_filter')}",
         )
         if not chosen:
             return
@@ -348,13 +353,13 @@ class BackgroundDialog(QDialog):
         if mode == "color":
             chosen = QColor(self.hex_edit.text().strip())
             if not chosen.isValid():
-                self.error.setText("COLOR NO VÁLIDO · USA #RRGGBB")
+                self.error.setText(tr("invalid_color"))
                 return
             self.color = chosen.name()
         elif mode == "image":
             path = Path(self.image_path).expanduser()
             if not path.is_file():
-                self.error.setText("ELIGE UNA IMAGEN VÁLIDA")
+                self.error.setText(tr("invalid_image"))
                 return
             self.image_path = str(path)
         self.mode = mode
@@ -374,7 +379,7 @@ class SleepDialog(QDialog):
         self.minutes: int | None = None
         self.remove = False
         self.action = action
-        self.setWindowTitle("Temporizador de apagado")
+        self.setWindowTitle(tr("sleep_title"))
         self.setModal(True)
         self.setMinimumWidth(480)
 
@@ -382,19 +387,19 @@ class SleepDialog(QDialog):
         layout.setContentsMargins(20, 20, 20, 16)
         layout.setSpacing(12)
 
-        heading = QLabel("TEMPORIZADOR DE APAGADO")
+        heading = QLabel(tr("sleep_heading"))
         heading.setObjectName("section")
         layout.addWidget(heading)
 
-        description = QLabel(
-            "La música se detendrá cuando termine la cuenta atrás."
-        )
+        description = QLabel(tr("sleep_description"))
         description.setObjectName("muted")
         description.setWordWrap(True)
         layout.addWidget(description)
 
         if remaining > 0:
-            active = QLabel(f"ACTIVO · QUEDAN {format_time(remaining)}")
+            active = QLabel(
+                tr("sleep_active_remaining", time=format_time(remaining))
+            )
             active.setObjectName("section")
             layout.addWidget(active)
 
@@ -413,11 +418,11 @@ class SleepDialog(QDialog):
 
         minutes_row = QHBoxLayout()
         minutes_row.setSpacing(8)
-        minutes_label = QLabel("MINUTOS")
+        minutes_label = QLabel(tr("minutes"))
         minutes_label.setObjectName("small")
         self.spin = QSpinBox()
         self.spin.setRange(1, 600)
-        self.spin.setSuffix(" min")
+        self.spin.setSuffix(tr("minutes_suffix"))
         initial = max(1, round(remaining / 60)) if remaining > 0 else 30
         self.spin.setValue(initial)
         minutes_row.addWidget(minutes_label)
@@ -427,11 +432,11 @@ class SleepDialog(QDialog):
 
         action_row = QHBoxLayout()
         action_row.setSpacing(8)
-        action_label = QLabel("AL TERMINAR")
+        action_label = QLabel(tr("when_finished"))
         action_label.setObjectName("small")
         self.action_combo = QComboBox()
-        self.action_combo.addItem("PAUSAR LA MÚSICA", "pause")
-        self.action_combo.addItem("CERRAR EL REPRODUCTOR", "close")
+        self.action_combo.addItem(tr("action_pause"), "pause")
+        self.action_combo.addItem(tr("action_close"), "close")
         self.action_combo.setCurrentIndex(1 if action == "close" else 0)
         action_row.addWidget(action_label)
         action_row.addWidget(self.action_combo, 1)
@@ -444,16 +449,16 @@ class SleepDialog(QDialog):
         row = QHBoxLayout()
         row.setSpacing(8)
         if remaining > 0:
-            remove = QPushButton("QUITAR TEMPORIZADOR")
+            remove = QPushButton(tr("remove_timer"))
             remove.setObjectName("small")
             remove.setFocusPolicy(Qt.FocusPolicy.NoFocus)
             remove.clicked.connect(self._remove)
             row.addWidget(remove)
         row.addStretch(1)
-        cancel = QPushButton("CANCELAR")
+        cancel = QPushButton(tr("cancel"))
         cancel.setObjectName("small")
         cancel.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        start = QPushButton("INICIAR")
+        start = QPushButton(tr("start"))
         start.setObjectName("small")
         start.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         row.addWidget(cancel)
@@ -485,7 +490,7 @@ class PlaylistPickerDialog(QDialog):
         super().__init__(parent)
         self.tracks = list(tracks)
         self.visible = list(tracks)
-        self.setWindowTitle("Añadir canciones")
+        self.setWindowTitle(tr("add_songs_title"))
         self.setModal(True)
         self.setMinimumSize(820, 560)
 
@@ -493,19 +498,21 @@ class PlaylistPickerDialog(QDialog):
         layout.setContentsMargins(20, 20, 20, 16)
         layout.setSpacing(10)
 
-        heading = QLabel(f"AÑADIR A «{playlist_name.upper()}»")
+        heading = QLabel(
+            tr("add_to_playlist_heading", name=playlist_name.upper())
+        )
         heading.setObjectName("section")
         heading.setWordWrap(True)
         layout.addWidget(heading)
 
         self.search = QLineEdit()
-        self.search.setPlaceholderText("Buscar por título, artista o álbum…")
+        self.search.setPlaceholderText(tr("search_placeholder"))
         self.search.setClearButtonEnabled(True)
         layout.addWidget(self.search)
 
         self.table = QTableWidget(0, 4)
         self.table.setHorizontalHeaderLabels(
-            ["TÍTULO", "ARTISTA", "ÁLBUM", "DUR."]
+            [tr(key) for key in PICKER_HEADER_KEYS]
         )
         self.table.verticalHeader().setVisible(False)
         self.table.setShowGrid(False)
@@ -527,9 +534,13 @@ class PlaylistPickerDialog(QDialog):
         header.setSectionResizeMode(1, QHeaderView.ResizeMode.Fixed)
         header.setSectionResizeMode(2, QHeaderView.ResizeMode.Fixed)
         header.setSectionResizeMode(3, QHeaderView.ResizeMode.Fixed)
-        self.table.setColumnWidth(1, 180)
-        self.table.setColumnWidth(2, 180)
-        self.table.setColumnWidth(3, 70)
+        for column, alignment in enumerate(PICKER_ALIGNMENTS):
+            item = self.table.horizontalHeaderItem(column)
+            if item is not None:
+                item.setTextAlignment(alignment)
+        self.table.setColumnWidth(1, 190)
+        self.table.setColumnWidth(2, 190)
+        self.table.setColumnWidth(3, 84)
         layout.addWidget(self.table, 1)
 
         footer = QHBoxLayout()
@@ -538,10 +549,10 @@ class PlaylistPickerDialog(QDialog):
         self.count_label.setObjectName("small")
         self.error = QLabel("")
         self.error.setObjectName("muted")
-        cancel = QPushButton("CANCELAR")
+        cancel = QPushButton(tr("cancel"))
         cancel.setObjectName("small")
         cancel.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        add = QPushButton("AÑADIR SELECCIÓN")
+        add = QPushButton(tr("add_selection"))
         add.setObjectName("small")
         add.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         footer.addWidget(self.count_label)
@@ -566,7 +577,7 @@ class PlaylistPickerDialog(QDialog):
             in f"{track.title} {track.artist} {track.album} {track.albumartist}".casefold()
         ]
         self._fill()
-        self.count_label.setText(f"{len(self.visible)} PISTAS")
+        self.count_label.setText(tr("track_count", n=len(self.visible)))
 
     def _fill(self) -> None:
         self.table.setUpdatesEnabled(False)
@@ -584,11 +595,7 @@ class PlaylistPickerDialog(QDialog):
                 item.setFlags(
                     Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable
                 )
-                if column == 3:
-                    item.setTextAlignment(
-                        Qt.AlignmentFlag.AlignRight
-                        | Qt.AlignmentFlag.AlignVCenter
-                    )
+                item.setTextAlignment(PICKER_ALIGNMENTS[column])
                 if column == 0:
                     item.setToolTip(track.path)
                 self.table.setItem(row, column, item)
@@ -609,7 +616,7 @@ class PlaylistPickerDialog(QDialog):
 
     def _accept(self) -> None:
         if not self.selected_tracks():
-            self.error.setText("SELECCIONA AL MENOS UNA CANCIÓN")
+            self.error.setText(tr("select_at_least_one"))
             return
         self.accept()
 
@@ -619,7 +626,7 @@ class TrackInfoDialog(QDialog):
 
     def __init__(self, track: Track, parent: QWidget | None = None):
         super().__init__(parent)
-        self.setWindowTitle("Información de la pista")
+        self.setWindowTitle(tr("track_info_title"))
         self.setModal(True)
         self.setMinimumWidth(540)
 
@@ -639,31 +646,35 @@ class TrackInfoDialog(QDialog):
 
         number = "—"
         if track.tracknumber and track.discnumber:
-            number = f"Pista {track.tracknumber:02d} · Disco {track.discnumber}"
+            number = tr(
+                "info_track_disc",
+                track=track.tracknumber,
+                disc=track.discnumber,
+            )
         elif track.tracknumber:
-            number = f"Pista {track.tracknumber:02d}"
+            number = tr("info_track", track=track.tracknumber)
         elif track.discnumber:
-            number = f"Disco {track.discnumber}"
+            number = tr("info_disc", disc=track.discnumber)
 
         rows = [
-            ("ÁLBUM", track.display_album),
-            ("ARTISTA DEL ÁLBUM", track.albumartist or "—"),
-            ("AÑO", track.year or "—"),
-            ("GÉNERO", track.genre or "—"),
-            ("NÚMERO", number),
-            ("DURACIÓN", format_time(track.duration)),
-            ("FORMATO", track.suffix.upper().lstrip(".") or "—"),
-            ("CALIDAD", track.quality or "—"),
-            ("PORTADA", "Sí" if track.has_cover else "No"),
-            ("ARCHIVO", track.path),
+            ("info_album", track.display_album),
+            ("info_album_artist", track.albumartist or "—"),
+            ("info_year", track.year or "—"),
+            ("info_genre", track.genre or "—"),
+            ("info_number", number),
+            ("info_duration", format_time(track.duration)),
+            ("info_format", track.suffix.upper().lstrip(".") or "—"),
+            ("info_quality", track.quality or "—"),
+            ("info_cover", tr("yes") if track.has_cover else tr("no")),
+            ("info_file", track.path),
         ]
 
         grid = QGridLayout()
         grid.setHorizontalSpacing(18)
         grid.setVerticalSpacing(7)
         self._info_rows: list[tuple[QLabel, QLabel]] = []
-        for row, (label, value) in enumerate(rows):
-            key = QLabel(label)
+        for row, (key_name, value) in enumerate(rows):
+            key = QLabel(tr(key_name))
             key.setObjectName("small")
             key.setAlignment(
                 Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft
@@ -676,7 +687,7 @@ class TrackInfoDialog(QDialog):
             text.setTextInteractionFlags(
                 Qt.TextInteractionFlag.TextSelectableByMouse
             )
-            if label == "ARCHIVO":
+            if key_name == "info_file":
                 text.setObjectName("muted")
             grid.addWidget(key, row, 0, Qt.AlignmentFlag.AlignTop)
             grid.addWidget(text, row, 1, Qt.AlignmentFlag.AlignTop)
@@ -687,7 +698,7 @@ class TrackInfoDialog(QDialog):
 
         buttons = QHBoxLayout()
         buttons.addStretch(1)
-        close = QPushButton("CERRAR")
+        close = QPushButton(tr("close"))
         close.setObjectName("small")
         close.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         close.clicked.connect(self.accept)

@@ -490,10 +490,10 @@ class MainWindow(QMainWindow):
         self.settings_btn.setObjectName("icon")
         self.settings_btn.setFixedSize(38, 32)
         self.settings_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.settings_btn.setIconSize(
-            QSize(CONTROL_ICON_SIZE, CONTROL_ICON_SIZE)
-        )
-        self.settings_btn.setIcon(file_icon("settings.png"))
+        # El engranaje llena todo el lienzo, así que se dibuja algo más pequeño
+        # que los demás iconos para que no parezca más grande.
+        self.settings_btn.setIconSize(QSize(22, 22))
+        self.settings_btn.setIcon(file_icon("settings.png", 22))
         self.settings_btn.setToolTip(tr("tooltip_settings"))
         top.addWidget(self.sleep_label)
         top.addWidget(self.sleep_btn)

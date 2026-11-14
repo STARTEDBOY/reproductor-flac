@@ -9,6 +9,7 @@ from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QButtonGroup,
+    QCheckBox,
     QColorDialog,
     QComboBox,
     QDialog,
@@ -28,7 +29,8 @@ from PySide6.QtWidgets import (
 )
 
 from library import Track, format_time
-from i18n import tr
+from i18n import LANGUAGES, tr
+from theme import text_font
 
 PICKER_HEADER_KEYS = ("col_title", "col_artist", "col_album", "col_duration")
 PICKER_ALIGNMENTS = (
@@ -168,8 +170,8 @@ class FolderDialog(QDialog):
         self.accept()
 
 
-class BackgroundDialog(QDialog):
-    """Elige fondo negro, color, portada actual o una imagen propia."""
+class BackgroundPicker(QWidget):
+    """Controles para elegir negro, color, portada actual o imagen propia."""
 
     def __init__(
         self,
@@ -182,22 +184,10 @@ class BackgroundDialog(QDialog):
         self.mode = mode
         self.color = color if QColor(color).isValid() else "#000000"
         self.image_path = image_path
-        self.setWindowTitle(tr("background_title"))
-        self.setModal(True)
-        self.setMinimumWidth(540)
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(20, 20, 20, 16)
+        layout.setContentsMargins(0, 0, 0, 0)
         layout.setSpacing(12)
-
-        heading = QLabel(tr("background_heading"))
-        heading.setObjectName("section")
-        layout.addWidget(heading)
-
-        description = QLabel(tr("background_description"))
-        description.setObjectName("muted")
-        description.setWordWrap(True)
-        layout.addWidget(description)
 
         options = QHBoxLayout()
         options.setSpacing(8)
@@ -257,19 +247,6 @@ class BackgroundDialog(QDialog):
         self.error.setObjectName("muted")
         layout.addWidget(self.error)
 
-        row = QHBoxLayout()
-        row.setSpacing(8)
-        cancel = QPushButton(tr("cancel"))
-        cancel.setObjectName("small")
-        cancel.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        apply_btn = QPushButton(tr("apply"))
-        apply_btn.setObjectName("small")
-        apply_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        row.addStretch(1)
-        row.addWidget(cancel)
-        row.addWidget(apply_btn)
-        layout.addLayout(row)
-
         self._select_mode(mode)
         self._update_swatch()
         self._sync_enabled()
@@ -284,8 +261,6 @@ class BackgroundDialog(QDialog):
         pick.clicked.connect(self._pick)
         self.pick_image.clicked.connect(self._pick_image)
         self.hex_edit.textChanged.connect(self._hex_changed)
-        cancel.clicked.connect(self.reject)
-        apply_btn.clicked.connect(self._accept)
 
     def _select_mode(self, mode: str) -> None:
         self.black_btn.setChecked(mode == "black")
@@ -348,22 +323,186 @@ class BackgroundDialog(QDialog):
             f"background-color: {self.color}; border: 1px solid #777777;"
         )
 
-    def _accept(self) -> None:
+    def validate(self) -> bool:
+        """Comprueba color e imagen y actualiza ``mode`` y ``image_path``."""
         mode = self._current_mode()
         if mode == "color":
             chosen = QColor(self.hex_edit.text().strip())
             if not chosen.isValid():
                 self.error.setText(tr("invalid_color"))
-                return
+                return False
             self.color = chosen.name()
         elif mode == "image":
             path = Path(self.image_path).expanduser()
             if not path.is_file():
                 self.error.setText(tr("invalid_image"))
-                return
+                return False
             self.image_path = str(path)
         self.mode = mode
+        return True
+
+
+class BackgroundDialog(QDialog):
+    """Elige fondo negro, color, portada actual o una imagen propia."""
+
+    def __init__(
+        self,
+        mode: str,
+        color: str,
+        image_path: str = "",
+        parent: QWidget | None = None,
+    ):
+        super().__init__(parent)
+        self.mode = mode
+        self.color = color if QColor(color).isValid() else "#000000"
+        self.image_path = image_path
+        self.setWindowTitle(tr("background_title"))
+        self.setModal(True)
+        self.setMinimumWidth(540)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 16)
+        layout.setSpacing(12)
+
+        heading = QLabel(tr("background_heading"))
+        heading.setObjectName("section")
+        layout.addWidget(heading)
+
+        description = QLabel(tr("background_description"))
+        description.setObjectName("muted")
+        description.setWordWrap(True)
+        layout.addWidget(description)
+
+        self.picker = BackgroundPicker(mode, color, image_path, self)
+        layout.addWidget(self.picker)
+
+        row = QHBoxLayout()
+        row.setSpacing(8)
+        cancel = QPushButton(tr("cancel"))
+        cancel.setObjectName("small")
+        cancel.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        apply_btn = QPushButton(tr("apply"))
+        apply_btn.setObjectName("small")
+        apply_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        row.addStretch(1)
+        row.addWidget(cancel)
+        row.addWidget(apply_btn)
+        layout.addLayout(row)
+
+        cancel.clicked.connect(self.reject)
+        apply_btn.clicked.connect(self._accept)
+
+    def _accept(self) -> None:
+        if not self.picker.validate():
+            return
+        self.mode = self.picker.mode
+        self.color = self.picker.color
+        self.image_path = self.picker.image_path
         self.accept()
+
+
+class SettingsDialog(QDialog):
+    """Ajustes del reproductor: idioma, fondo y biblioteca."""
+
+    def __init__(
+        self,
+        language: str,
+        mode: str,
+        color: str,
+        image_path: str = "",
+        library_hidden: bool = False,
+        parent: QWidget | None = None,
+    ):
+        super().__init__(parent)
+        self.language = language
+        self.mode = mode
+        self.color = color
+        self.image_path = image_path
+        self.library_hidden = library_hidden
+        self.setWindowTitle(tr("settings_title"))
+        self.setModal(True)
+        self.setMinimumWidth(560)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 16)
+        layout.setSpacing(12)
+
+        heading = QLabel(tr("settings_heading"))
+        heading.setObjectName("section")
+        layout.addWidget(heading)
+
+        language_label = QLabel(tr("language"))
+        language_label.setObjectName("small")
+        layout.addWidget(language_label)
+
+        self.language_combo = QComboBox()
+        self.language_combo.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.language_combo.setFixedWidth(200)
+        for code, name in LANGUAGES:
+            self.language_combo.addItem(name, code)
+        for index in range(self.language_combo.count()):
+            text = self.language_combo.itemText(index)
+            self.language_combo.setItemData(
+                index, text_font(text, 18), Qt.ItemDataRole.FontRole
+            )
+        codes = [code for code, _name in LANGUAGES]
+        if language in codes:
+            self.language_combo.setCurrentIndex(codes.index(language))
+        self.language_combo.setFont(
+            text_font(self.language_combo.currentText(), 18)
+        )
+        self.language_combo.currentIndexChanged.connect(
+            lambda _index: self.language_combo.setFont(
+                text_font(self.language_combo.currentText(), 18)
+            )
+        )
+        layout.addWidget(self.language_combo)
+
+        background_label = QLabel(tr("background_heading"))
+        background_label.setObjectName("small")
+        layout.addWidget(background_label)
+
+        description = QLabel(tr("background_description"))
+        description.setObjectName("muted")
+        description.setWordWrap(True)
+        layout.addWidget(description)
+
+        self.picker = BackgroundPicker(mode, color, image_path, self)
+        layout.addWidget(self.picker)
+
+        self.hide_check = QCheckBox(tr("hide_library"))
+        self.hide_check.setChecked(library_hidden)
+        self.hide_check.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        layout.addWidget(self.hide_check)
+
+        row = QHBoxLayout()
+        row.setSpacing(8)
+        cancel = QPushButton(tr("cancel"))
+        cancel.setObjectName("small")
+        cancel.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        apply_btn = QPushButton(tr("apply"))
+        apply_btn.setObjectName("small")
+        apply_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        row.addStretch(1)
+        row.addWidget(cancel)
+        row.addWidget(apply_btn)
+        layout.addLayout(row)
+
+        cancel.clicked.connect(self.reject)
+        apply_btn.clicked.connect(self._accept)
+
+    def _accept(self) -> None:
+        if not self.picker.validate():
+            return
+        code = self.language_combo.currentData()
+        if code:
+            self.language = str(code)
+        self.mode = self.picker.mode
+        self.color = self.picker.color
+        self.image_path = self.picker.image_path
+        self.library_hidden = self.hide_check.isChecked()
+        self.accept()
+
 
 
 class SleepDialog(QDialog):
@@ -592,6 +731,7 @@ class PlaylistPickerDialog(QDialog):
             ]
             for column, text in enumerate(values):
                 item = QTableWidgetItem(text)
+                item.setFont(text_font(text, 18))
                 item.setFlags(
                     Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable
                 )
@@ -641,6 +781,7 @@ class TrackInfoDialog(QDialog):
 
         subtitle = QLabel(track.display_artist)
         subtitle.setObjectName("artist")
+        subtitle.setFont(text_font(track.display_artist, 21))
         subtitle.setWordWrap(True)
         layout.addWidget(subtitle)
 
@@ -680,6 +821,7 @@ class TrackInfoDialog(QDialog):
                 Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft
             )
             text = QLabel(value)
+            text.setFont(text_font(value, 18))
             text.setWordWrap(True)
             text.setAlignment(
                 Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft

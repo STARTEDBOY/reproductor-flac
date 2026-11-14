@@ -40,14 +40,14 @@ from PySide6.QtWidgets import (
 )
 
 from dialogs import (
-    BackgroundDialog,
     FolderDialog,
     NameDialog,
     PlaylistPickerDialog,
+    SettingsDialog,
     SleepDialog,
     TrackInfoDialog,
 )
-from i18n import DEFAULT_LANGUAGE, LANGUAGES, get_language, set_language, tr
+from i18n import DEFAULT_LANGUAGE, LANGUAGES, set_language, tr
 from library import (
     Track,
     format_time,
@@ -69,10 +69,10 @@ from theme import (
     build_style,
     file_icon,
     heart_icon,
-    library_icon,
     load_fonts,
     pixel_icon,
     repeat_icon,
+    text_font,
 )
 
 
@@ -262,19 +262,10 @@ class MainWindow(QMainWindow):
             if item is not None:
                 item.setTextAlignment(alignment)
 
-    def _update_library_button(self) -> None:
-        if self.library_hidden:
-            self.hide_library_btn.setIcon(library_icon(True))
-            self.hide_library_btn.setToolTip(tr("tooltip_show_library"))
-        else:
-            self.hide_library_btn.setIcon(library_icon(False))
-            self.hide_library_btn.setToolTip(tr("tooltip_hide_library"))
-
     def _toggle_library(self) -> None:
         self.library_hidden = not self.library_hidden
         self.library_panel.setVisible(not self.library_hidden)
         self._apply_panel_order()
-        self._update_library_button()
         self._set_state(
             "library_hidden" if self.library_hidden else "library_visible"
         )
@@ -309,16 +300,6 @@ class MainWindow(QMainWindow):
         self.count_label.setAlignment(
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
         )
-        self.language_combo = QComboBox()
-        self.language_combo.setObjectName("language")
-        self.language_combo.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.language_combo.setFixedWidth(112)
-        self.language_combo.setToolTip(tr("tooltip_language"))
-        for code, name in LANGUAGES:
-            self.language_combo.addItem(name, code)
-        self.language_combo.setCurrentIndex(
-            max(0, [code for code, _name in LANGUAGES].index(self.language))
-        )
         self.side_btn = QPushButton()
         self.side_btn.setObjectName("icon")
         self.side_btn.setFixedSize(38, 30)
@@ -328,8 +309,6 @@ class MainWindow(QMainWindow):
         self.side_btn.setToolTip(self._side_tooltip())
         header.addWidget(self.library_title)
         header.addStretch(1)
-        header.addWidget(self.language_combo)
-        header.addSpacing(8)
         header.addWidget(self.count_label)
         header.addSpacing(6)
         header.addWidget(self.side_btn)
@@ -507,28 +486,18 @@ class MainWindow(QMainWindow):
         self.sleep_btn.setIconSize(QSize(TIMER_ICON_SIZE, TIMER_ICON_SIZE))
         self.sleep_btn.setIcon(file_icon("timer.png"))
         self.sleep_btn.setToolTip(tr("tooltip_sleep"))
-        self.background_btn = QPushButton()
-        self.background_btn.setObjectName("icon")
-        self.background_btn.setFixedSize(38, 32)
-        self.background_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.background_btn.setIconSize(
+        self.settings_btn = QPushButton()
+        self.settings_btn.setObjectName("icon")
+        self.settings_btn.setFixedSize(38, 32)
+        self.settings_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.settings_btn.setIconSize(
             QSize(CONTROL_ICON_SIZE, CONTROL_ICON_SIZE)
         )
-        self.background_btn.setIcon(file_icon("background.png"))
-        self.background_btn.setToolTip(tr("tooltip_background"))
-        self.hide_library_btn = QPushButton()
-        self.hide_library_btn.setObjectName("icon")
-        self.hide_library_btn.setFixedSize(38, 32)
-        self.hide_library_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.hide_library_btn.setIconSize(
-            QSize(CONTROL_ICON_SIZE, CONTROL_ICON_SIZE)
-        )
-        self.hide_library_btn.setIcon(library_icon(False))
-        self.hide_library_btn.setToolTip(tr("tooltip_hide_library"))
+        self.settings_btn.setIcon(file_icon("settings.png"))
+        self.settings_btn.setToolTip(tr("tooltip_settings"))
         top.addWidget(self.sleep_label)
         top.addWidget(self.sleep_btn)
-        top.addWidget(self.background_btn)
-        top.addWidget(self.hide_library_btn)
+        top.addWidget(self.settings_btn)
         top.addSpacing(-10)
         layout.addLayout(top)
 
@@ -703,21 +672,11 @@ class MainWindow(QMainWindow):
         else:
             self.setWindowTitle(f"{tr('app_name')} · STARTED")
 
-    def _language_changed(self, index: int) -> None:
-        code = self.language_combo.itemData(index)
-        if not code or code == get_language():
-            return
-        self.language = str(code)
-        set_language(self.language)
-        self.settings.setValue("language", self.language)
-        self._retranslate_ui()
-
     def _retranslate_ui(self) -> None:
         """Actualiza todos los textos visibles sin reconstruir la ventana."""
         self._update_window_title()
 
         self.library_title.setText(tr("library"))
-        self.language_combo.setToolTip(tr("tooltip_language"))
         self.library_mode_btn.setText(tr("library"))
         self.favorites_mode_btn.setText(tr("favorites"))
         self.playlists_mode_btn.setText(tr("playlists"))
@@ -734,11 +693,10 @@ class MainWindow(QMainWindow):
         self.folder_btn.setText(tr("folder"))
         self.folder_btn.setToolTip(tr("tooltip_folder"))
         self.side_btn.setToolTip(self._side_tooltip())
-        self._update_library_button()
 
         self.now_label.setText(tr("now_playing"))
         self.sleep_btn.setToolTip(tr("tooltip_sleep"))
-        self.background_btn.setToolTip(tr("tooltip_background"))
+        self.settings_btn.setToolTip(tr("tooltip_settings"))
         self.progress.setToolTip(tr("tooltip_progress"))
         self.shuffle_btn.setToolTip(tr("tooltip_shuffle"))
         self.prev_btn.setToolTip(tr("tooltip_prev"))
@@ -748,13 +706,19 @@ class MainWindow(QMainWindow):
         self.volume_title.setText(tr("volume"))
         if self.current is None:
             self.title_label.setText(tr("nothing_playing"))
+            self.title_label.setFont(
+                text_font(tr("nothing_playing"), 30, bold=True)
+            )
         else:
             self.artist_label.setText(self.current.display_artist)
+            self.artist_label.setFont(
+                text_font(self.current.display_artist, 21)
+            )
             album = self.current.display_album
             quality = self.current.quality
-            self.meta_label.setText(
-                f"{album} · {quality}" if quality else album
-            )
+            meta_text = f"{album} · {quality}" if quality else album
+            self.meta_label.setText(meta_text)
+            self.meta_label.setFont(text_font(meta_text, 16))
         self._refresh_play_text()
         self._refresh_state_text()
         self._update_sleep_label()
@@ -772,7 +736,6 @@ class MainWindow(QMainWindow):
         self.search.returnPressed.connect(self._search_enter)
         self.artist_combo.currentIndexChanged.connect(self._artist_changed)
         self.album_combo.currentIndexChanged.connect(self._apply_filters)
-        self.language_combo.currentIndexChanged.connect(self._language_changed)
         self.table.itemActivated.connect(self._on_item_activated)
         self.table.cellClicked.connect(self._on_cell_clicked)
         self.table.customContextMenuRequested.connect(self._table_menu)
@@ -819,11 +782,8 @@ class MainWindow(QMainWindow):
             lambda _checked=False: self._move_playlist_track(1)
         )
 
-        self.hide_library_btn.clicked.connect(
-            lambda _checked=False: self._toggle_library()
-        )
         self.sleep_btn.clicked.connect(self._open_sleep_dialog)
-        self.background_btn.clicked.connect(self._choose_background)
+        self.settings_btn.clicked.connect(self._open_settings)
 
         self.mpv.positionChanged.connect(self._on_position)
         self.mpv.durationChanged.connect(self._on_duration)
@@ -866,7 +826,6 @@ class MainWindow(QMainWindow):
         self.volume_value.setText(str(volume))
 
         self._refresh_playlist_combo()
-        self._update_library_button()
         self._set_mode("library")
 
     # ------------------------------------------------------------- library
@@ -1028,9 +987,20 @@ class MainWindow(QMainWindow):
         )
         for artist in artists:
             self.artist_combo.addItem(artist, artist)
+        for index in range(self.artist_combo.count()):
+            text = self.artist_combo.itemText(index)
+            self.artist_combo.setItemData(
+                index, text_font(text, 18), Qt.ItemDataRole.FontRole
+            )
         self.artist_combo.setCurrentIndex(0)
         self.artist_combo.blockSignals(False)
+        self._fit_combo_font(self.artist_combo)
         self._populate_albums()
+
+    @staticmethod
+    def _fit_combo_font(combo: QComboBox) -> None:
+        """Ajusta la fuente del texto visible del desplegable."""
+        combo.setFont(text_font(combo.currentText(), 18))
 
     def _populate_albums(self) -> None:
         artist = self.artist_combo.currentData() or ""
@@ -1047,8 +1017,14 @@ class MainWindow(QMainWindow):
         )
         for album in albums:
             self.album_combo.addItem(album, album)
+        for index in range(self.album_combo.count()):
+            text = self.album_combo.itemText(index)
+            self.album_combo.setItemData(
+                index, text_font(text, 18), Qt.ItemDataRole.FontRole
+            )
         self.album_combo.setCurrentIndex(0)
         self.album_combo.blockSignals(False)
+        self._fit_combo_font(self.album_combo)
 
     def _restore_filters(self, artist: str, album: str) -> None:
         if artist:
@@ -1066,10 +1042,12 @@ class MainWindow(QMainWindow):
                 self.album_combo.blockSignals(False)
 
     def _artist_changed(self) -> None:
+        self._fit_combo_font(self.artist_combo)
         self._populate_albums()
         self._apply_filters()
 
     def _apply_filters(self) -> None:
+        self._fit_combo_font(self.album_combo)
         if self.mode == "favorites":
             base = [
                 track for track in self.tracks if track.path in self.favorites
@@ -1151,6 +1129,7 @@ class MainWindow(QMainWindow):
             ]
             for column, text in enumerate(values):
                 item = QTableWidgetItem(text)
+                item.setFont(text_font(text, 18))
                 item.setFlags(
                     Qt.ItemFlag.ItemIsEnabled | Qt.ItemFlag.ItemIsSelectable
                 )
@@ -1226,11 +1205,15 @@ class MainWindow(QMainWindow):
         self.time_total.setText(format_time(track.duration))
 
         self.title_label.setText(track.title)
+        self.title_label.setFont(text_font(track.title, 30, bold=True))
         self.title_label.setToolTip(track.title)
         self.artist_label.setText(track.display_artist)
+        self.artist_label.setFont(text_font(track.display_artist, 21))
         album = track.display_album
         quality = track.quality
-        self.meta_label.setText(f"{album} · {quality}" if quality else album)
+        meta_text = f"{album} · {quality}" if quality else album
+        self.meta_label.setText(meta_text)
+        self.meta_label.setFont(text_font(meta_text, 16))
         self._load_lyrics(track)
         self._update_cover(track)
 
@@ -1361,6 +1344,7 @@ class MainWindow(QMainWindow):
         if index + 1 < len(self.lyrics):
             text = f"{text}\n{self.lyrics[index + 1][1]}"
         self.lyrics_label.setText(text)
+        self.lyrics_label.setFont(text_font(text, 18))
 
     def _clear_lyrics(self) -> None:
         self.lyrics = []
@@ -1557,6 +1541,11 @@ class MainWindow(QMainWindow):
         self.playlist_combo.clear()
         for playlist in self.playlists:
             self.playlist_combo.addItem(playlist["name"])
+        for index in range(self.playlist_combo.count()):
+            text = self.playlist_combo.itemText(index)
+            self.playlist_combo.setItemData(
+                index, text_font(text, 18), Qt.ItemDataRole.FontRole
+            )
         if (
             self.current_playlist is not None
             and 0 <= self.current_playlist < len(self.playlists)
@@ -1569,6 +1558,7 @@ class MainWindow(QMainWindow):
             self.current_playlist = None
             self.playlist_combo.setCurrentIndex(-1)
         self.playlist_combo.blockSignals(False)
+        self._fit_combo_font(self.playlist_combo)
 
         has_playlist = bool(self.playlists)
         self.playlist_combo.setEnabled(has_playlist)
@@ -1873,14 +1863,26 @@ class MainWindow(QMainWindow):
         self._set_play_text("play")
         self._set_state("ready")
 
-    # ------------------------------------------------------------------ fondo
-    def _choose_background(self) -> None:
-        dialog = BackgroundDialog(
-            self.bg_mode, self.bg_color, self.bg_image_path, self
+    # ------------------------------------------------------------------ ajustes
+    def _open_settings(self) -> None:
+        dialog = SettingsDialog(
+            self.language,
+            self.bg_mode,
+            self.bg_color,
+            self.bg_image_path,
+            self.library_hidden,
+            self,
         )
         dialog.setStyleSheet(self.styleSheet())
         if dialog.exec() != QDialog.DialogCode.Accepted:
             return
+
+        if dialog.language != self.language:
+            self.language = dialog.language
+            set_language(self.language)
+            self.settings.setValue("language", self.language)
+            self._retranslate_ui()
+
         self.bg_mode = dialog.mode
         self.bg_color = dialog.color
         if self.bg_mode == "image":
@@ -1895,6 +1897,9 @@ class MainWindow(QMainWindow):
         self.settings.setValue("background_color", self.bg_color)
         self.settings.setValue("background_image", self.bg_image_path)
         self._apply_style()
+
+        if dialog.library_hidden != self.library_hidden:
+            self._toggle_library()
 
     # ---------------------------------------------------------- temporizador
     def _open_sleep_dialog(self) -> None:

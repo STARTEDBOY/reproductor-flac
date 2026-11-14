@@ -78,17 +78,23 @@ QLineEdit, QSpinBox {
     selection-color: %(selection_text)s;
 }
 QLineEdit:focus, QSpinBox:focus { border: 1px solid %(text)s; }
+QCheckBox { spacing: 8px; }
+QCheckBox::indicator {
+    width: 16px;
+    height: 16px;
+    border: 1px solid %(border)s;
+    background-color: %(input_bg)s;
+}
+QCheckBox::indicator:checked {
+    background-color: %(text)s;
+    border: 1px solid %(text)s;
+}
 QComboBox {
     background-color: %(input_bg)s;
     border: 1px solid %(border)s;
     padding: 6px 8px;
 }
 QComboBox:hover { border-color: %(text)s; }
-QComboBox#language {
-    font-family: 'Press Start 2P';
-    font-size: 7px;
-    padding: 5px 6px;
-}
 QComboBox QAbstractItemView {
     background-color: %(popup_bg)s;
     border: 1px solid %(border)s;
@@ -309,10 +315,60 @@ def build_style(mode: str, color: str) -> str:
 
 def load_fonts(base_dir: Path) -> None:
     folder = Path(base_dir) / "assets" / "fonts"
-    for filename in ("press-start-2p.ttf", "vt323.ttf"):
+    for filename in (
+        "press-start-2p.ttf",
+        "vt323.ttf",
+        "dotgothic16.ttf",
+    ):
         path = folder / filename
         if path.exists():
             QFontDatabase.addApplicationFont(str(path))
+
+
+# Rangos donde VT323 no tiene glifos (japonés, chino, coreano y sus signos).
+# Sin esto, Qt usa una fuente del sistema y el texto se ve más grande.
+_CJK_RANGES = (
+    (0x1100, 0x11FF),    # Jamo coreano
+    (0x2E80, 0x2FDF),    # Radicales CJK
+    (0x3000, 0x30FF),    # Puntuación, hiragana y katakana
+    (0x31F0, 0x31FF),    # Katakana extendido
+    (0x3400, 0x4DBF),    # CJK extensión A
+    (0x4E00, 0x9FFF),    # CJK unificado
+    (0xAC00, 0xD7AF),    # Sílabas coreanas
+    (0xF900, 0xFAFF),    # CJK compatibilidad
+    (0xFF00, 0xFFEF),    # Formas de ancho completo
+    (0x20000, 0x2FA1F),  # CJK extensiones B-F
+)
+
+# DotGothic16 a 2/3 del tamaño de VT323 iguala la altura visual de las letras
+# latinas, así las pistas en japonés no parecen más grandes que las demás.
+CJK_SIZE_FACTOR = 2 / 3
+
+
+def has_cjk(text: str) -> bool:
+    """Indica si el texto contiene caracteres japoneses, chinos o coreanos."""
+    return any(
+        start <= ord(char) <= end
+        for char in text
+        for start, end in _CJK_RANGES
+    )
+
+
+def text_font(text: str, pixel_size: int, bold: bool = False) -> QFont:
+    """Fuente acorde al alfabeto del texto, con el mismo tamaño visual.
+
+    El texto latino usa VT323 y el CJK usa DotGothic16 (pixel art con glifos
+    japoneses) reducida para que ambas se vean igual de grandes.
+    """
+    font = QFont()
+    if has_cjk(text):
+        font.setFamilies(["DotGothic16"])
+        font.setPixelSize(max(8, round(pixel_size * CJK_SIZE_FACTOR)))
+    else:
+        font.setFamilies(["VT323"])
+        font.setPixelSize(pixel_size)
+    font.setBold(bold)
+    return font
 
 
 APP_ICON_NAME = "utilities-terminal-symbolic"

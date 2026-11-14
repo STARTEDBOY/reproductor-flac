@@ -42,17 +42,21 @@ puedes usar **EXAMINAR…**), o ejecuta:
   y ruta del archivo, con cada etiqueta y su valor alineados por línea base.
 - Temporizador de apagado: pausa la música o cierra el reproductor al terminar.
 - Fondo **negro**, de **color libre**, con la **portada** de la canción actual
-  o con una **imagen propia** elegida desde el diálogo de fondo.
+  o con una **imagen propia**, todo desde **Ajustes**.
 - Panel del reproductor a la **izquierda o a la derecha** con el icono de intercambio.
-- Iconos pixel art propios para aleatorio, repetir, temporizador, fondo y
-  ocultar biblioteca, guardados en `assets/icons/`. El de cambiar de lado sigue
-  dibujado en la rejilla de 12 × 12.
-- **Temporizador**, **Color, portada o imagen de fondo** y **ocultar
-  biblioteca** están juntos en la fila superior de **AHORA SUENA**.
-- Icono del ojo para **ocultar la biblioteca** y dejar solo **AHORA SUENA**.
+- Botón único de **Ajustes** (engranaje) en **AHORA SUENA**: reúne el idioma,
+  el fondo y la visibilidad de la biblioteca.
+- Iconos pixel art propios para aleatorio, repetir, temporizador y ajustes,
+  guardados en `assets/icons/`. El de cambiar de lado sigue dibujado en la
+  rejilla de 12 × 12.
+- **Temporizador** y **Ajustes** están juntos en la fila superior de
+  **AHORA SUENA**; desde Ajustes puedes **ocultar la biblioteca** y dejar solo
+  **AHORA SUENA**.
 - Cambio de carpeta escribiendo, pegando o examinando una ruta.
-- Interfaz en **español**, **inglés**, **japonés** y **ruso**, con un selector de
-  idioma en la cabecera de la biblioteca; la elección se guarda al instante.
+- Interfaz en **español**, **inglés**, **japonés** y **ruso**; el idioma se elige
+  en **Ajustes** y se guarda al instante.
+- Los títulos, artistas y letras en japonés usan la fuente pixel **DotGothic16**
+  ajustada al mismo tamaño visual que el texto latino.
 - Encabezados y celdas de las tablas comparten ancho y alineación: los textos a
   la izquierda y los números o duraciones a la derecha, con espacio entre columnas.
 - Arrastra una carpeta sobre la ventana para cargarla.
@@ -103,11 +107,11 @@ pip install --user PySide6 mutagen
 | `main.py` | Punto de entrada |
 | `ui.py` | Ventana, biblioteca, listas y reproducción |
 | `theme.py` | Estilos, fondo, sliders e iconos pixel art |
-| `dialogs.py` | Diálogos de carpeta, fondo, listas, temporizador e información |
+| `dialogs.py` | Diálogos de ajustes, carpeta, listas, temporizador e información |
 | `library.py` | Escaneo de etiquetas, caché de biblioteca y portadas |
 | `i18n.py` | Traducciones de la interfaz y selector de idioma |
 | `mpv_backend.py` | Comunicación con mpv por IPC |
-| `assets/fonts/` | Press Start 2P y VT323 |
+| `assets/fonts/` | Press Start 2P, VT323 y DotGothic16 |
 | `assets/icons/` | Iconos PNG de los controles del reproductor |
 | `assets/icon.svg` | Icono de la aplicación |
 
@@ -127,6 +131,8 @@ Puedes borrar la caché sin miedo; se regenera al abrir la aplicación. Si borra
 ## Notas
 
 - No modifica ni mueve tus archivos: solo los lee.
+- La fuente DotGothic16 se incluye con licencia SIL OFL 1.1
+  (`assets/fonts/LICENSE-DotGothic16.txt`).
 - Si mpv no arranca, prueba a lanzar desde una terminal para ver el error.
 - En equipos sin salida de audio se puede probar con
   `REPRODUCTOR_AO=null ~/reproductor-flac/run.sh`.

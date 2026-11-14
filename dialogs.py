@@ -30,7 +30,7 @@ from PySide6.QtWidgets import (
 
 from library import Track, format_time
 from i18n import LANGUAGES, tr
-from theme import text_font
+from theme import text_font, text_style
 
 PICKER_HEADER_KEYS = ("col_title", "col_artist", "col_album", "col_duration")
 PICKER_ALIGNMENTS = (
@@ -52,7 +52,7 @@ def _fit_combo(combo: QComboBox, size: int = 18) -> None:
             text_font(combo.itemText(index), size),
             Qt.ItemDataRole.FontRole,
         )
-    combo.setFont(text_font(combo.currentText(), size))
+    combo.setStyleSheet(text_style(combo.currentText(), size))
 
 
 class NameDialog(QDialog):
@@ -810,7 +810,7 @@ class TrackInfoDialog(QDialog):
 
         subtitle = QLabel(track.display_artist)
         subtitle.setObjectName("artist")
-        subtitle.setFont(text_font(track.display_artist, 21))
+        subtitle.setStyleSheet(text_style(track.display_artist, 21))
         subtitle.setWordWrap(True)
         layout.addWidget(subtitle)
 
@@ -850,7 +850,7 @@ class TrackInfoDialog(QDialog):
                 Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft
             )
             text = QLabel(value)
-            text.setFont(text_font(value, 18))
+            text.setStyleSheet(text_style(value, 18))
             text.setWordWrap(True)
             text.setAlignment(
                 Qt.AlignmentFlag.AlignTop | Qt.AlignmentFlag.AlignLeft

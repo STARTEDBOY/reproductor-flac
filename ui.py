@@ -10,13 +10,13 @@ from pathlib import Path
 from PySide6.QtCore import (
     QEasingCurve,
     QEvent,
+    QPoint,
     QPropertyAnimation,
     QSettings,
     QSize,
     Qt,
     QThread,
     QTimer,
-    Property,
     Signal,
 )
 from PySide6.QtGui import (
@@ -34,6 +34,7 @@ from PySide6.QtWidgets import (
     QComboBox,
     QDialog,
     QFrame,
+    QGraphicsOpacityEffect,
     QHBoxLayout,
     QHeaderView,
     QLabel,
@@ -84,6 +85,7 @@ from theme import (
     pixel_icon,
     repeat_icon,
     text_font,
+    text_style,
 )
 
 
@@ -105,47 +107,18 @@ MAIN_ALIGNMENTS = (
 )
 
 
-class LyricsLabel(QLabel):
-    """Etiqueta de letras con desplazamiento y opacidad animables."""
+class LyricsBox(QWidget):
+    """Contenedor de la letra que coloca y deja deslizar la etiqueta."""
 
-    # El estilo de la etiqueta lleva un relleno superior de 4 px.
-    PADDING_TOP = 4
-
-    def __init__(self, parent: QWidget | None = None):
+    def __init__(self, label: QLabel, parent: QWidget | None = None):
         super().__init__(parent)
-        self._offset = 0.0
-        self._opacity = 1.0
+        self.label = label
+        label.setParent(self)
+        label.setGeometry(0, 0, self.width(), self.height())
 
-    def get_offset(self) -> float:
-        return self._offset
-
-    def set_offset(self, value: float) -> None:
-        self._offset = float(value)
-        self.update()
-
-    def get_opacity(self) -> float:
-        return self._opacity
-
-    def set_opacity(self, value: float) -> None:
-        self._opacity = max(0.0, min(1.0, float(value)))
-        self.update()
-
-    offset = Property(float, get_offset, set_offset)
-    opacity = Property(float, get_opacity, set_opacity)
-
-    def paintEvent(self, event) -> None:  # noqa: N802 - API de Qt
-        if abs(self._offset) < 0.5 and self._opacity >= 0.999:
-            super().paintEvent(event)
-            return
-        painter = QPainter(self)
-        painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
-        painter.setOpacity(self._opacity)
-        painter.setFont(self.font())
-        painter.setPen(self.palette().color(self.foregroundRole()))
-        painter.translate(0, self._offset)
-        flags = int(self.alignment()) | int(Qt.TextFlag.TextWordWrap)
-        rect = self.rect().adjusted(0, self.PADDING_TOP, 0, 0)
-        painter.drawText(rect, flags, self.text())
+    def resizeEvent(self, event) -> None:  # noqa: N802 - API de Qt
+        super().resizeEvent(event)
+        self.label.setGeometry(0, 0, self.width(), self.height())
 
 
 class ScanWorker(QThread):
@@ -595,15 +568,20 @@ class MainWindow(QMainWindow):
         self.meta_label.setObjectName("meta")
         layout.addWidget(self.meta_label)
 
-        self.lyrics_label = LyricsLabel("")
+        self.lyrics_label = QLabel("")
         self.lyrics_label.setObjectName("lyrics")
         self.lyrics_label.setWordWrap(True)
-        self.lyrics_label.setFixedHeight(86)
         self.lyrics_label.setAlignment(
             Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop
         )
-        self.lyrics_label.setVisible(False)
-        layout.addWidget(self.lyrics_label)
+        self._lyrics_opacity = QGraphicsOpacityEffect(self.lyrics_label)
+        self._lyrics_opacity.setOpacity(1.0)
+        self._lyrics_opacity.setEnabled(False)
+        self.lyrics_label.setGraphicsEffect(self._lyrics_opacity)
+        self.lyrics_box = LyricsBox(self.lyrics_label)
+        self.lyrics_box.setFixedHeight(86)
+        self.lyrics_box.setVisible(False)
+        layout.addWidget(self.lyrics_box)
 
         layout.addStretch(1)
 
@@ -771,19 +749,19 @@ class MainWindow(QMainWindow):
         self.volume_title.setText(tr("volume"))
         if self.current is None:
             self.title_label.setText(tr("nothing_playing"))
-            self.title_label.setFont(
-                text_font(tr("nothing_playing"), 30, bold=True)
+            self.title_label.setStyleSheet(
+                text_style(tr("nothing_playing"), 30, bold=True)
             )
         else:
             self.artist_label.setText(self.current.display_artist)
-            self.artist_label.setFont(
-                text_font(self.current.display_artist, 21)
+            self.artist_label.setStyleSheet(
+                text_style(self.current.display_artist, 21)
             )
             album = self.current.display_album
             quality = self.current.quality
             meta_text = f"{album} · {quality}" if quality else album
             self.meta_label.setText(meta_text)
-            self.meta_label.setFont(text_font(meta_text, 16))
+            self.meta_label.setStyleSheet(text_style(meta_text, 16))
         self._refresh_play_text()
         self._refresh_state_text()
         self._update_sleep_label()
@@ -1065,7 +1043,7 @@ class MainWindow(QMainWindow):
     @staticmethod
     def _fit_combo_font(combo: QComboBox) -> None:
         """Ajusta la fuente del texto visible del desplegable."""
-        combo.setFont(text_font(combo.currentText(), 18))
+        combo.setStyleSheet(text_style(combo.currentText(), 18))
 
     def _populate_albums(self) -> None:
         artist = self.artist_combo.currentData() or ""
@@ -1270,15 +1248,15 @@ class MainWindow(QMainWindow):
         self.time_total.setText(format_time(track.duration))
 
         self.title_label.setText(track.title)
-        self.title_label.setFont(text_font(track.title, 30, bold=True))
+        self.title_label.setStyleSheet(text_style(track.title, 30, bold=True))
         self.title_label.setToolTip(track.title)
         self.artist_label.setText(track.display_artist)
-        self.artist_label.setFont(text_font(track.display_artist, 21))
+        self.artist_label.setStyleSheet(text_style(track.display_artist, 21))
         album = track.display_album
         quality = track.quality
         meta_text = f"{album} · {quality}" if quality else album
         self.meta_label.setText(meta_text)
-        self.meta_label.setFont(text_font(meta_text, 16))
+        self.meta_label.setStyleSheet(text_style(meta_text, 16))
         self._load_lyrics(track)
         self._update_cover(track)
 
@@ -1378,7 +1356,7 @@ class MainWindow(QMainWindow):
             self.lyrics = []
         self.lyric_index = -1
         self.lyrics_label.setText("")
-        self.lyrics_label.setVisible(bool(self.lyrics))
+        self.lyrics_box.setVisible(bool(self.lyrics))
         self._update_lyrics(self.position)
 
     def _update_lyrics(self, position: float) -> None:
@@ -1387,10 +1365,10 @@ class MainWindow(QMainWindow):
             self._stop_lyrics_animation()
             if self.lyrics_label.text():
                 self.lyrics_label.setText("")
-            self.lyrics_label.setVisible(False)
+            self.lyrics_box.setVisible(False)
             return
-        if self.lyrics_label.isHidden():
-            self.lyrics_label.setVisible(True)
+        if not self.lyrics_box.isVisible():
+            self.lyrics_box.setVisible(True)
 
         index = -1
         for position_index, (stamp, _line) in enumerate(self.lyrics):
@@ -1410,14 +1388,12 @@ class MainWindow(QMainWindow):
         text = self.lyrics[index][1]
         if index + 1 < len(self.lyrics):
             text = f"{text}\n{self.lyrics[index + 1][1]}"
-        self.lyrics_label.setFont(text_font(text, 18))
+        self.lyrics_label.setStyleSheet(text_style(text, 18))
         self._animate_lyrics(text)
 
     def _animate_lyrics(self, text: str) -> None:
         """Muestra la letra con el efecto elegido en Ajustes."""
         self._stop_lyrics_animation()
-        self.lyrics_label.set_offset(0.0)
-        self.lyrics_label.set_opacity(1.0)
 
         if self.lyrics_effect_name == "typewriter":
             self._lyrics_full_text = text
@@ -1430,22 +1406,35 @@ class MainWindow(QMainWindow):
         if self.lyrics_effect_name == "none":
             return
 
-        fade = QPropertyAnimation(self.lyrics_label, b"opacity", self)
+        # El efecto de opacidad solo se activa mientras dura la animación;
+        # así el texto se pinta directamente y se ve nítido al terminar.
+        self._lyrics_opacity.setOpacity(0.0)
+        self._lyrics_opacity.setEnabled(True)
+
+        fade = QPropertyAnimation(self._lyrics_opacity, b"opacity", self)
         fade.setDuration(420)
         fade.setStartValue(0.0)
         fade.setEndValue(1.0)
         fade.setEasingCurve(QEasingCurve.Type.OutCubic)
+        fade.finished.connect(self._finish_lyrics_animation)
         self._lyrics_anims.append(fade)
         fade.start()
 
         if self.lyrics_effect_name == "slide":
-            move = QPropertyAnimation(self.lyrics_label, b"offset", self)
+            self.lyrics_label.move(0, 14)
+            move = QPropertyAnimation(self.lyrics_label, b"pos", self)
             move.setDuration(420)
-            move.setStartValue(14.0)
-            move.setEndValue(0.0)
+            move.setStartValue(QPoint(0, 14))
+            move.setEndValue(QPoint(0, 0))
             move.setEasingCurve(QEasingCurve.Type.OutCubic)
             self._lyrics_anims.append(move)
             move.start()
+
+    def _finish_lyrics_animation(self) -> None:
+        """Deja la letra en su sitio y desactiva el efecto de opacidad."""
+        self._lyrics_opacity.setOpacity(1.0)
+        self._lyrics_opacity.setEnabled(False)
+        self.lyrics_label.move(0, 0)
 
     def _type_lyric(self) -> None:
         self._lyrics_char += 1
@@ -1460,15 +1449,16 @@ class MainWindow(QMainWindow):
         for animation in self._lyrics_anims:
             animation.stop()
         self._lyrics_anims.clear()
+        self._lyrics_opacity.setOpacity(1.0)
+        self._lyrics_opacity.setEnabled(False)
+        self.lyrics_label.move(0, 0)
 
     def _clear_lyrics(self) -> None:
         self._stop_lyrics_animation()
-        self.lyrics_label.set_offset(0.0)
-        self.lyrics_label.set_opacity(1.0)
         self.lyrics = []
         self.lyric_index = -1
         self.lyrics_label.setText("")
-        self.lyrics_label.setVisible(False)
+        self.lyrics_box.setVisible(False)
 
     def _on_position(self, position: float) -> None:
         self.position = position

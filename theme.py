@@ -370,6 +370,23 @@ def text_font(text: str, pixel_size: int, bold: bool = False) -> QFont:
     return font
 
 
+def text_style(text: str, pixel_size: int, bold: bool = False) -> str:
+    """Regla de estilo con la fuente y el tamaño adecuados al texto.
+
+    Las etiquetas con hoja de estilos vuelven a imponer su fuente, así que
+    en ellas ``setFont`` no basta: hay que fijar la fuente con CSS.
+    """
+    font = text_font(text, pixel_size, bold)
+    families = font.families()
+    family = families[0] if families else "VT323"
+    weight = "bold" if bold else "normal"
+    return (
+        f"font-family: '{family}'; "
+        f"font-size: {font.pixelSize()}px; "
+        f"font-weight: {weight};"
+    )
+
+
 APP_ICON_NAME = "utilities-terminal-symbolic"
 
 

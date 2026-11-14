@@ -7,7 +7,18 @@ import os
 import random
 from pathlib import Path
 
-from PySide6.QtCore import QEvent, QSettings, QSize, Qt, QThread, QTimer, Signal
+from PySide6.QtCore import (
+    QEasingCurve,
+    QEvent,
+    QPropertyAnimation,
+    QSettings,
+    QSize,
+    Qt,
+    QThread,
+    QTimer,
+    Property,
+    Signal,
+)
 from PySide6.QtGui import (
     QColor,
     QFont,
@@ -40,6 +51,7 @@ from PySide6.QtWidgets import (
 )
 
 from dialogs import (
+    LYRICS_EFFECTS,
     FolderDialog,
     NameDialog,
     PlaylistPickerDialog,
@@ -62,7 +74,6 @@ from theme import (
     CONTROL_ICON_SIZE,
     DEFAULT_COVER_SIZE,
     PIXEL_SWAP,
-    TIMER_ICON_SIZE,
     Backdrop,
     ClickSlider,
     app_icon,
@@ -92,6 +103,49 @@ MAIN_ALIGNMENTS = (
     Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
     Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
 )
+
+
+class LyricsLabel(QLabel):
+    """Etiqueta de letras con desplazamiento y opacidad animables."""
+
+    # El estilo de la etiqueta lleva un relleno superior de 4 px.
+    PADDING_TOP = 4
+
+    def __init__(self, parent: QWidget | None = None):
+        super().__init__(parent)
+        self._offset = 0.0
+        self._opacity = 1.0
+
+    def get_offset(self) -> float:
+        return self._offset
+
+    def set_offset(self, value: float) -> None:
+        self._offset = float(value)
+        self.update()
+
+    def get_opacity(self) -> float:
+        return self._opacity
+
+    def set_opacity(self, value: float) -> None:
+        self._opacity = max(0.0, min(1.0, float(value)))
+        self.update()
+
+    offset = Property(float, get_offset, set_offset)
+    opacity = Property(float, get_opacity, set_opacity)
+
+    def paintEvent(self, event) -> None:  # noqa: N802 - API de Qt
+        if abs(self._offset) < 0.5 and self._opacity >= 0.999:
+            super().paintEvent(event)
+            return
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.TextAntialiasing)
+        painter.setOpacity(self._opacity)
+        painter.setFont(self.font())
+        painter.setPen(self.palette().color(self.foregroundRole()))
+        painter.translate(0, self._offset)
+        flags = int(self.alignment()) | int(Qt.TextFlag.TextWordWrap)
+        rect = self.rect().adjusted(0, self.PADDING_TOP, 0, 0)
+        painter.drawText(rect, flags, self.text())
 
 
 class ScanWorker(QThread):
@@ -130,6 +184,12 @@ class MainWindow(QMainWindow):
         self.track_by_path: dict[str, Track] = {}
         self.lyrics: list[tuple[float, str]] = []
         self.lyric_index = -1
+        self._lyrics_anims: list[QPropertyAnimation] = []
+        self._lyrics_full_text = ""
+        self._lyrics_char = 0
+        self._lyrics_timer = QTimer(self)
+        self._lyrics_timer.setInterval(28)
+        self._lyrics_timer.timeout.connect(self._type_lyric)
 
         self.settings = QSettings("STARTED", "Reproductor FLAC")
         self.language = str(
@@ -143,6 +203,11 @@ class MainWindow(QMainWindow):
         self.repeat = str(self.settings.value("repeat", "off"))
         if self.repeat not in ("off", "all", "one"):
             self.repeat = "off"
+        self.lyrics_effect_name = str(
+            self.settings.value("lyrics_effect", "fade") or "fade"
+        )
+        if self.lyrics_effect_name not in LYRICS_EFFECTS:
+            self.lyrics_effect_name = "fade"
 
         self.cover_size = DEFAULT_COVER_SIZE
         self.bg_mode = str(self.settings.value("background_mode", "black") or "black")
@@ -483,8 +548,8 @@ class MainWindow(QMainWindow):
         self.sleep_btn.setFixedSize(38, 32)
         self.sleep_btn.setCheckable(True)
         self.sleep_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.sleep_btn.setIconSize(QSize(TIMER_ICON_SIZE, TIMER_ICON_SIZE))
-        self.sleep_btn.setIcon(file_icon("timer.png"))
+        self.sleep_btn.setIconSize(QSize(22, 22))
+        self.sleep_btn.setIcon(file_icon("timer.png", 22))
         self.sleep_btn.setToolTip(tr("tooltip_sleep"))
         self.settings_btn = QPushButton()
         self.settings_btn.setObjectName("icon")
@@ -530,7 +595,7 @@ class MainWindow(QMainWindow):
         self.meta_label.setObjectName("meta")
         layout.addWidget(self.meta_label)
 
-        self.lyrics_label = QLabel("")
+        self.lyrics_label = LyricsLabel("")
         self.lyrics_label.setObjectName("lyrics")
         self.lyrics_label.setWordWrap(True)
         self.lyrics_label.setFixedHeight(86)
@@ -1319,6 +1384,7 @@ class MainWindow(QMainWindow):
     def _update_lyrics(self, position: float) -> None:
         """Muestra la línea actual y la siguiente según la reproducción."""
         if not self.lyrics:
+            self._stop_lyrics_animation()
             if self.lyrics_label.text():
                 self.lyrics_label.setText("")
             self.lyrics_label.setVisible(False)
@@ -1337,16 +1403,68 @@ class MainWindow(QMainWindow):
         self.lyric_index = index
 
         if index < 0:
+            self._stop_lyrics_animation()
             self.lyrics_label.setText("")
             return
 
         text = self.lyrics[index][1]
         if index + 1 < len(self.lyrics):
             text = f"{text}\n{self.lyrics[index + 1][1]}"
-        self.lyrics_label.setText(text)
         self.lyrics_label.setFont(text_font(text, 18))
+        self._animate_lyrics(text)
+
+    def _animate_lyrics(self, text: str) -> None:
+        """Muestra la letra con el efecto elegido en Ajustes."""
+        self._stop_lyrics_animation()
+        self.lyrics_label.set_offset(0.0)
+        self.lyrics_label.set_opacity(1.0)
+
+        if self.lyrics_effect_name == "typewriter":
+            self._lyrics_full_text = text
+            self._lyrics_char = 0
+            self.lyrics_label.setText("")
+            self._lyrics_timer.start()
+            return
+
+        self.lyrics_label.setText(text)
+        if self.lyrics_effect_name == "none":
+            return
+
+        fade = QPropertyAnimation(self.lyrics_label, b"opacity", self)
+        fade.setDuration(420)
+        fade.setStartValue(0.0)
+        fade.setEndValue(1.0)
+        fade.setEasingCurve(QEasingCurve.Type.OutCubic)
+        self._lyrics_anims.append(fade)
+        fade.start()
+
+        if self.lyrics_effect_name == "slide":
+            move = QPropertyAnimation(self.lyrics_label, b"offset", self)
+            move.setDuration(420)
+            move.setStartValue(14.0)
+            move.setEndValue(0.0)
+            move.setEasingCurve(QEasingCurve.Type.OutCubic)
+            self._lyrics_anims.append(move)
+            move.start()
+
+    def _type_lyric(self) -> None:
+        self._lyrics_char += 1
+        if self._lyrics_char >= len(self._lyrics_full_text):
+            self.lyrics_label.setText(self._lyrics_full_text)
+            self._lyrics_timer.stop()
+        else:
+            self.lyrics_label.setText(self._lyrics_full_text[: self._lyrics_char])
+
+    def _stop_lyrics_animation(self) -> None:
+        self._lyrics_timer.stop()
+        for animation in self._lyrics_anims:
+            animation.stop()
+        self._lyrics_anims.clear()
 
     def _clear_lyrics(self) -> None:
+        self._stop_lyrics_animation()
+        self.lyrics_label.set_offset(0.0)
+        self.lyrics_label.set_opacity(1.0)
         self.lyrics = []
         self.lyric_index = -1
         self.lyrics_label.setText("")
@@ -1871,6 +1989,7 @@ class MainWindow(QMainWindow):
             self.bg_color,
             self.bg_image_path,
             self.library_hidden,
+            self.lyrics_effect_name,
             self,
         )
         dialog.setStyleSheet(self.styleSheet())
@@ -1900,6 +2019,13 @@ class MainWindow(QMainWindow):
 
         if dialog.library_hidden != self.library_hidden:
             self._toggle_library()
+
+        if dialog.lyrics_effect != self.lyrics_effect_name:
+            self.lyrics_effect_name = dialog.lyrics_effect
+            self.settings.setValue("lyrics_effect", self.lyrics_effect_name)
+            # Repite la línea actual para previsualizar el efecto elegido.
+            self.lyric_index = -1
+            self._update_lyrics(self.position)
 
     # ---------------------------------------------------------- temporizador
     def _open_sleep_dialog(self) -> None:

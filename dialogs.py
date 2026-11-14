@@ -40,6 +40,20 @@ PICKER_ALIGNMENTS = (
     Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
 )
 
+# Efectos disponibles al cambiar de línea de letra.
+LYRICS_EFFECTS = ("fade", "slide", "typewriter", "none")
+
+
+def _fit_combo(combo: QComboBox, size: int = 18) -> None:
+    """Aplica a cada opción y al texto visible la fuente del alfabeto."""
+    for index in range(combo.count()):
+        combo.setItemData(
+            index,
+            text_font(combo.itemText(index), size),
+            Qt.ItemDataRole.FontRole,
+        )
+    combo.setFont(text_font(combo.currentText(), size))
+
 
 class NameDialog(QDialog):
     """Pide un nombre para una lista de reproducción."""
@@ -411,6 +425,7 @@ class SettingsDialog(QDialog):
         color: str,
         image_path: str = "",
         library_hidden: bool = False,
+        lyrics_effect: str = "fade",
         parent: QWidget | None = None,
     ):
         super().__init__(parent)
@@ -419,6 +434,7 @@ class SettingsDialog(QDialog):
         self.color = color
         self.image_path = image_path
         self.library_hidden = library_hidden
+        self.lyrics_effect = lyrics_effect
         self.setWindowTitle(tr("settings_title"))
         self.setModal(True)
         self.setMinimumWidth(560)
@@ -440,21 +456,12 @@ class SettingsDialog(QDialog):
         self.language_combo.setFixedWidth(200)
         for code, name in LANGUAGES:
             self.language_combo.addItem(name, code)
-        for index in range(self.language_combo.count()):
-            text = self.language_combo.itemText(index)
-            self.language_combo.setItemData(
-                index, text_font(text, 18), Qt.ItemDataRole.FontRole
-            )
         codes = [code for code, _name in LANGUAGES]
         if language in codes:
             self.language_combo.setCurrentIndex(codes.index(language))
-        self.language_combo.setFont(
-            text_font(self.language_combo.currentText(), 18)
-        )
+        _fit_combo(self.language_combo)
         self.language_combo.currentIndexChanged.connect(
-            lambda _index: self.language_combo.setFont(
-                text_font(self.language_combo.currentText(), 18)
-            )
+            lambda _index: _fit_combo(self.language_combo)
         )
         layout.addWidget(self.language_combo)
 
@@ -469,6 +476,25 @@ class SettingsDialog(QDialog):
 
         self.picker = BackgroundPicker(mode, color, image_path, self)
         layout.addWidget(self.picker)
+
+        lyrics_label = QLabel(tr("lyrics_effect"))
+        lyrics_label.setObjectName("small")
+        layout.addWidget(lyrics_label)
+
+        self.lyrics_combo = QComboBox()
+        self.lyrics_combo.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.lyrics_combo.setFixedWidth(240)
+        for key in LYRICS_EFFECTS:
+            self.lyrics_combo.addItem(tr(f"lyrics_effect_{key}"), key)
+        if lyrics_effect in LYRICS_EFFECTS:
+            self.lyrics_combo.setCurrentIndex(
+                LYRICS_EFFECTS.index(lyrics_effect)
+            )
+        _fit_combo(self.lyrics_combo)
+        self.lyrics_combo.currentIndexChanged.connect(
+            lambda _index: _fit_combo(self.lyrics_combo)
+        )
+        layout.addWidget(self.lyrics_combo)
 
         self.hide_check = QCheckBox(tr("hide_library"))
         self.hide_check.setChecked(library_hidden)
@@ -501,6 +527,9 @@ class SettingsDialog(QDialog):
         self.color = self.picker.color
         self.image_path = self.picker.image_path
         self.library_hidden = self.hide_check.isChecked()
+        key = self.lyrics_combo.currentData()
+        if key:
+            self.lyrics_effect = str(key)
         self.accept()
 
 

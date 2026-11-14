@@ -29,6 +29,8 @@ puedes usar **EXAMINAR…**), o ejecuta:
 - Muestra la portada incrustada (con caché para cargarla al instante).
 - Muestra la letra bajo el álbum en **AHORA SUENA**, avanzando con la canción:
   lee etiquetas LRC incrustadas (`lyrics`/`unsyncedlyrics`) o archivos `.lrc`.
+- Efectos al cambiar de línea de letra: **desvanecido**, **deslizar**, **máquina
+  de escribir** o **sin efecto**, elegidos en **Ajustes**.
 - Buscador y filtros por artista y álbum.
 - Reproducción, pausa, anterior, siguiente, barra de progreso y volumen.
 - Clic en cualquier punto de la barra para saltar; también se puede arrastrar.
@@ -45,7 +47,7 @@ puedes usar **EXAMINAR…**), o ejecuta:
   o con una **imagen propia**, todo desde **Ajustes**.
 - Panel del reproductor a la **izquierda o a la derecha** con el icono de intercambio.
 - Botón único de **Ajustes** (engranaje) en **AHORA SUENA**: reúne el idioma,
-  el fondo y la visibilidad de la biblioteca.
+  el fondo, el efecto de las letras y la visibilidad de la biblioteca.
 - Iconos pixel art propios para aleatorio, repetir, temporizador y ajustes,
   guardados en `assets/icons/`. El de cambiar de lado sigue dibujado en la
   rejilla de 12 × 12.

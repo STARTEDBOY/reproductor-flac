@@ -25,7 +25,6 @@ from PySide6.QtWidgets import (
 
 DEFAULT_COVER_SIZE = 320
 CONTROL_ICON_SIZE = 28
-TIMER_ICON_SIZE = 24
 ICON_DIR = Path(__file__).resolve().parent / "assets" / "icons"
 
 STYLE_TEMPLATE = """

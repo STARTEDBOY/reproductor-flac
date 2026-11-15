@@ -387,11 +387,14 @@ def text_style(text: str, pixel_size: int, bold: bool = False) -> str:
     )
 
 
-APP_ICON_NAME = "utilities-terminal-symbolic"
+APP_ICON_NAME = "reproductor-flac"
 
 
 def app_icon(base_dir: Path) -> QIcon:
-    """Icono del tema del escritorio, con el SVG local como respaldo."""
+    """Icono propio del reproductor, con el tema como respaldo."""
+    local = Path(base_dir) / "assets" / "icon.png"
+    if local.exists():
+        return QIcon(str(local))
     icon = QIcon.fromTheme(APP_ICON_NAME)
     if not icon.isNull():
         return icon

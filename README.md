@@ -56,7 +56,7 @@ puedes usar **EXAMINAR…**), o ejecuta:
 - **Temporizador** y **Ajustes** están juntos en la fila superior de
   **AHORA SUENA**; desde Ajustes puedes **ocultar la biblioteca** y dejar solo
   **AHORA SUENA**. Al ocultarla, la ventana se ajusta al tamaño del panel del
-  reproductor y lo recupera al volver a mostrarla.
+  reproductor y lo recupera al volver a mostrarla, incluso si estaba maximizada.
 - Cambio de carpeta escribiendo, pegando o examinando una ruta.
 - Interfaz en **español**, **inglés**, **japonés** y **ruso**; el idioma se elige
   en **Ajustes** y se guarda al instante.

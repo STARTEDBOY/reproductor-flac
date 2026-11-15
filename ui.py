@@ -323,9 +323,13 @@ class MainWindow(QMainWindow):
         self._apply_panel_order()
 
         if hiding:
-            target = self._player_only_size()
-            self.setMinimumSize(target)
-            self.resize(target)
+            if self._was_maximized:
+                # En Wayland el compositor tarda un instante en restaurar la
+                # ventana normal; se ajusta después para que no lo pise.
+                QTimer.singleShot(120, self._fit_to_player)
+                QTimer.singleShot(400, self._fit_to_player)
+            else:
+                self._fit_to_player()
         else:
             self.setMinimumSize(MIN_WINDOW_SIZE)
             if self._size_before_hide is not None:
@@ -337,6 +341,15 @@ class MainWindow(QMainWindow):
         self._set_state(
             "library_hidden" if self.library_hidden else "library_visible"
         )
+
+    def _fit_to_player(self) -> None:
+        """Ajusta la ventana al panel de AHORA SUENA si la biblioteca está oculta."""
+        if not self.library_hidden or self.isMaximized():
+            return
+        target = self._player_only_size()
+        self.setMinimumSize(target)
+        if self.size() != target:
+            self.resize(target)
 
     def _player_only_size(self) -> QSize:
         """Tamaño justo para mostrar solo el panel de AHORA SUENA."""

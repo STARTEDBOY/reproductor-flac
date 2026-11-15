@@ -51,9 +51,12 @@ puedes usar **EXAMINAR…**), o ejecuta:
 - Iconos pixel art propios para aleatorio, repetir, temporizador y ajustes,
   guardados en `assets/icons/`. El de cambiar de lado sigue dibujado en la
   rejilla de 12 × 12.
+- Los iconos se adaptan al fondo: **blancos** sobre fondos oscuros y **negros**
+  sobre fondos claros.
 - **Temporizador** y **Ajustes** están juntos en la fila superior de
   **AHORA SUENA**; desde Ajustes puedes **ocultar la biblioteca** y dejar solo
-  **AHORA SUENA**.
+  **AHORA SUENA**. Al ocultarla, la ventana se ajusta al tamaño del panel del
+  reproductor y lo recupera al volver a mostrarla.
 - Cambio de carpeta escribiendo, pegando o examinando una ruta.
 - Interfaz en **español**, **inglés**, **japonés** y **ruso**; el idioma se elige
   en **Ajustes** y se guarda al instante.

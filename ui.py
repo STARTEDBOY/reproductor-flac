@@ -84,6 +84,7 @@ from theme import (
     load_fonts,
     pixel_icon,
     repeat_icon,
+    set_icon_palette,
     text_font,
     text_style,
 )
@@ -105,6 +106,9 @@ MAIN_ALIGNMENTS = (
     Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter,
     Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter,
 )
+
+MIN_WINDOW_SIZE = QSize(1080, 760)
+DEFAULT_WINDOW_SIZE = QSize(1220, 820)
 
 
 class LyricsBox(QWidget):
@@ -212,6 +216,8 @@ class MainWindow(QMainWindow):
             self.settings.value("player_side", "right") or "right"
         ) == "left"
         self.library_hidden = False
+        self._size_before_hide: QSize | None = None
+        self._was_maximized = False
 
         stored_favorites = self.settings.value("favorites", [])
         if isinstance(stored_favorites, str):
@@ -250,8 +256,8 @@ class MainWindow(QMainWindow):
 
         self.setWindowTitle(f"{tr('app_name')} · STARTED")
         self.setWindowIcon(app_icon(self.base_dir))
-        self.setMinimumSize(1080, 760)
-        self.resize(1220, 820)
+        self.setMinimumSize(MIN_WINDOW_SIZE)
+        self.resize(DEFAULT_WINDOW_SIZE)
         self.setAcceptDrops(True)
 
         self._build_ui()
@@ -301,11 +307,53 @@ class MainWindow(QMainWindow):
                 item.setTextAlignment(alignment)
 
     def _toggle_library(self) -> None:
-        self.library_hidden = not self.library_hidden
-        self.library_panel.setVisible(not self.library_hidden)
+        hiding = not self.library_hidden
+        if hiding:
+            self._was_maximized = self.isMaximized()
+            self._size_before_hide = (
+                self.normalGeometry().size()
+                if self._was_maximized
+                else self.size()
+            )
+            if self._was_maximized:
+                self.showNormal()
+
+        self.library_hidden = hiding
+        self.library_panel.setVisible(not hiding)
         self._apply_panel_order()
+
+        if hiding:
+            target = self._player_only_size()
+            self.setMinimumSize(target)
+            self.resize(target)
+        else:
+            self.setMinimumSize(MIN_WINDOW_SIZE)
+            if self._size_before_hide is not None:
+                self.resize(self._size_before_hide)
+            if self._was_maximized:
+                self.showMaximized()
+                self._was_maximized = False
+
         self._set_state(
             "library_hidden" if self.library_hidden else "library_visible"
+        )
+
+    def _player_only_size(self) -> QSize:
+        """Tamaño justo para mostrar solo el panel de AHORA SUENA."""
+        margins = self.outer.contentsMargins()
+        hint = self.player_panel.sizeHint()
+        minimum = self.player_panel.minimumSizeHint()
+        height = max(hint.height(), minimum.height())
+        if not self.lyrics_box.isVisible():
+            # Reserva el hueco de la letra aunque ahora no suene ninguna,
+            # para que el panel no se superponga al aparecer durante la canción.
+            spacing = self.player_panel.layout().spacing()
+            height += self.lyrics_box.height() + spacing
+        return QSize(
+            self.player_panel.minimumWidth()
+            + margins.left()
+            + margins.right(),
+            height + margins.top() + margins.bottom(),
         )
 
     def _side_tooltip(self) -> str:
@@ -683,6 +731,8 @@ class MainWindow(QMainWindow):
 
     def _apply_style(self) -> None:
         self.setStyleSheet(build_style(self.bg_mode, self.bg_color))
+        set_icon_palette(self.bg_mode, self.bg_color)
+        self._refresh_icons()
         self.backdrop.set_background(self.bg_mode, self.bg_color)
         self.backdrop.set_cover(
             self.current_cover if self.bg_mode == "cover" else None
@@ -690,6 +740,22 @@ class MainWindow(QMainWindow):
         self.backdrop.set_image(
             self.bg_image if self.bg_mode == "image" else None
         )
+
+    def _refresh_icons(self) -> None:
+        """Regenera los iconos con los colores del fondo actual."""
+        self.side_btn.setIcon(pixel_icon(PIXEL_SWAP))
+        self.sleep_btn.setIcon(file_icon("timer.png", 22))
+        self.settings_btn.setIcon(file_icon("settings.png", 22))
+        self.shuffle_btn.setIcon(file_icon("shuffle.png"))
+        self._update_repeat_button()
+        self._refresh_favorite_icons()
+
+    def _refresh_favorite_icons(self) -> None:
+        """Actualiza los corazones de la tabla al cambiar de fondo."""
+        for row, track in enumerate(self.visible):
+            item = self.table.item(row, 0)
+            if item is not None:
+                item.setIcon(heart_icon(22, track.path in self.favorites))
 
     # -------------------------------------------------------------- idioma
     def _set_state(self, key: str, **kwargs: object) -> None:

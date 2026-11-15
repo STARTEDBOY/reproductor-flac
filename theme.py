@@ -27,6 +27,14 @@ DEFAULT_COVER_SIZE = 320
 CONTROL_ICON_SIZE = 28
 ICON_DIR = Path(__file__).resolve().parent / "assets" / "icons"
 
+# Colores de los iconos según el fondo actual: blancos sobre fondos oscuros
+# y negros sobre fondos claros.
+_ICON_COLORS = {
+    "normal": "#ffffff",
+    "active": "#000000",
+    "disabled": "#6a6a6a",
+}
+
 STYLE_TEMPLATE = """
 * { outline: none; }
 QWidget {
@@ -403,14 +411,14 @@ def app_icon(base_dir: Path) -> QIcon:
 
 
 def heart_icon(size: int, filled: bool) -> QIcon:
-    """Corazón blanco que se vuelve negro sobre la fila seleccionada."""
+    """Corazón que contrasta con el fondo y con la fila seleccionada."""
     icon = QIcon()
     for factor in (1, 2, 3):
         scaled = size * factor
         for mode, color in (
-            (QIcon.Mode.Normal, "#ffffff"),
-            (QIcon.Mode.Selected, "#000000"),
-            (QIcon.Mode.Disabled, "#6a6a6a"),
+            (QIcon.Mode.Normal, _ICON_COLORS["normal"]),
+            (QIcon.Mode.Selected, _ICON_COLORS["active"]),
+            (QIcon.Mode.Disabled, _ICON_COLORS["disabled"]),
         ):
             icon.addPixmap(heart_pixmap(scaled, filled, color), mode)
     return icon
@@ -533,13 +541,13 @@ def pixel_pixmap(
 
 
 def pixel_icon(rows: tuple[str, ...], size: int = 24) -> QIcon:
-    """Icono blanco normal, negro al pasar el ratón o al quedar activo."""
+    """Icono normal y activo con los colores del fondo actual."""
     icon = QIcon()
     for factor in (1, 2, 3):
         scaled = size * factor
         for state, color in (
-            (QIcon.State.Off, "#ffffff"),
-            (QIcon.State.On, "#000000"),
+            (QIcon.State.Off, _ICON_COLORS["normal"]),
+            (QIcon.State.On, _ICON_COLORS["active"]),
         ):
             icon.addPixmap(
                 pixel_pixmap(rows, scaled, color),
@@ -547,12 +555,12 @@ def pixel_icon(rows: tuple[str, ...], size: int = 24) -> QIcon:
                 state,
             )
             icon.addPixmap(
-                pixel_pixmap(rows, scaled, "#000000"),
+                pixel_pixmap(rows, scaled, _ICON_COLORS["active"]),
                 QIcon.Mode.Active,
                 state,
             )
         icon.addPixmap(
-            pixel_pixmap(rows, scaled, "#6a6a6a"),
+            pixel_pixmap(rows, scaled, _ICON_COLORS["disabled"]),
             QIcon.Mode.Disabled,
             QIcon.State.Off,
         )
@@ -651,8 +659,8 @@ def _build_file_icon(source: QPixmap, size: int) -> QIcon:
     for factor in (1, 2, 4):
         scaled = size * factor
         for state, color in (
-            (QIcon.State.Off, "#ffffff"),
-            (QIcon.State.On, "#000000"),
+            (QIcon.State.Off, _ICON_COLORS["normal"]),
+            (QIcon.State.On, _ICON_COLORS["active"]),
         ):
             icon.addPixmap(
                 _tinted_pixmap(source, scaled, color),
@@ -660,12 +668,12 @@ def _build_file_icon(source: QPixmap, size: int) -> QIcon:
                 state,
             )
             icon.addPixmap(
-                _tinted_pixmap(source, scaled, "#000000"),
+                _tinted_pixmap(source, scaled, _ICON_COLORS["active"]),
                 QIcon.Mode.Active,
                 state,
             )
         icon.addPixmap(
-            _tinted_pixmap(source, scaled, "#6a6a6a"),
+            _tinted_pixmap(source, scaled, _ICON_COLORS["disabled"]),
             QIcon.Mode.Disabled,
             QIcon.State.Off,
         )
@@ -688,6 +696,24 @@ def library_icon(hidden: bool, size: int = CONTROL_ICON_SIZE) -> QIcon:
 def repeat_icon(one: bool, size: int = CONTROL_ICON_SIZE) -> QIcon:
     source = _repeat_one_source() if one else _icon_source("repeat.png")
     return _build_file_icon(source, size)
+
+
+def set_icon_palette(mode: str, color: str) -> None:
+    """Adapta los iconos al fondo: blancos en oscuro y negros en claro.
+
+    Las funciones de iconos están en caché, así que se vacían para que el
+    siguiente dibujo use los colores nuevos.
+    """
+    global _ICON_COLORS
+    values = _palette(mode, color)
+    _ICON_COLORS = {
+        "normal": values["text"],
+        "active": values["selection_text"],
+        "disabled": "#6a6a6a",
+    }
+    file_icon.cache_clear()
+    library_icon.cache_clear()
+    repeat_icon.cache_clear()
 
 
 class Backdrop(QWidget):

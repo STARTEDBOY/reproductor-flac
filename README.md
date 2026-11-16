@@ -24,8 +24,14 @@ puedes usar **EXAMINAR…**), o ejecuta:
 
 ### Windows
 
-1. Instala [Python 3](https://www.python.org/downloads/) y [mpv](https://mpv.io/installation/)
-   y asegúrate de que `python` (o `py`) y `mpv` estén en el `PATH`.
+**Portable (recomendado para compartir):** genera el paquete con
+`build_windows.bat` o descárgalo desde GitHub Actions (ver más abajo). El
+portable ya incluye `mpv`, así que no hace falta instalarlo aparte.
+
+**Desde el código fuente:**
+1. Instala [Python 3](https://www.python.org/downloads/). Necesitas `mpv` en el
+   `PATH` o una copia en la carpeta `mpv\` del proyecto (el build portable la
+   descarga automáticamente).
 2. Instala las dependencias:
 
    ```bat
@@ -184,21 +190,24 @@ Puedes borrar la caché sin miedo; se regenera al abrir la aplicación. Si borra
 `playlists.json` se pierden las listas, pero no las canciones. Si borras
 `history.json` se reinician el historial y los contadores.
 
-## Compilar un portable para Windows
+## Compilar un portable para Windows (con mpv incluido)
 
 No puedo generar un `.exe` de Windows desde este entorno Linux, pero el
 proyecto incluye lo necesario para crearlo:
 
-- **En un PC con Windows**: ejecuta `build_windows.bat`. Instala dependencias,
-  compila con PyInstaller y genera `dist\ReproductorFLAC\` (carpeta portable).
-  Comprímela en un `.zip` y compártela; el equipo destino necesita **mpv** en el
-  `PATH` (o `mpv.exe` accesible) para reproducir audio.
-- **Con GitHub Actions**: el flujo `.github/workflows/build-windows.yml` genera
-  un zip portable como artefacto (`workflow_dispatch` o al publicar un tag `v*`).
-  Descárgalo desde la pestaña Actions del repositorio.
+- **En un PC con Windows**: ejecuta `build_windows.bat`. Si no existe `mpv\`,
+  descarga automáticamente una build portable de mpv (x86_64), instala
+  dependencias, compila con PyInstaller y genera `dist\ReproductorFLAC\`
+  (carpeta portable con `mpv.exe` incluido). Comprímela en un `.zip` y
+  compártela: el equipo destino no necesita instalar mpv aparte.
+- **Con GitHub Actions**: el flujo `.github/workflows/build-windows.yml` descarga
+  mpv, compila y publica `ReproductorFLAC-windows-portable.zip` como artefacto
+  (`workflow_dispatch` o al publicar un tag `v*`). Descárgalo desde la pestaña
+  Actions del repositorio.
 
-El empaquetado incluye los assets (fuentes, iconos) y usa `--windowed`
-(sin consola). El visualizador de espectro se desactiva en Windows.
+El empaquetado incluye los assets (fuentes, iconos) y mpv, y se ejecuta sin
+consola (`--windowed`). mpv es software de terceros distribuido con su propia
+licencia. El visualizador de espectro se desactiva en Windows.
 
 ## Notas
 

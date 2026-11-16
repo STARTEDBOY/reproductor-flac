@@ -83,6 +83,30 @@ class MpvController(QObject):
             )
 
     # ------------------------------------------------------------------ start
+    def _find_mpv(self) -> str:
+        """Ruta a mpv/mpv.exe, prefiriendo una copia incluida en el paquete."""
+        if sys.platform == "win32":
+            candidates: list[Path] = []
+            meipass = getattr(sys, "_MEIPASS", None)
+            if meipass:
+                candidates.append(Path(meipass) / "mpv" / "mpv.exe")
+                candidates.append(Path(meipass) / "mpv.exe")
+            exe_dir = Path(sys.executable).resolve().parent
+            candidates.append(exe_dir / "mpv" / "mpv.exe")
+            candidates.append(exe_dir / "mpv.exe")
+            base = Path(__file__).resolve().parent
+            candidates.append(base / "mpv" / "mpv.exe")
+            candidates.append(base / "mpv.exe")
+            for path in candidates:
+                if path.is_file():
+                    return str(path)
+            return (
+                shutil.which("mpv")
+                or shutil.which("mpv.exe")
+                or "mpv"
+            )
+        return shutil.which("mpv") or "mpv"
+
     def start(self) -> None:
         if self._proc.state() != QProcess.ProcessState.NotRunning:
             return
@@ -112,12 +136,7 @@ class MpvController(QObject):
             args.append(f"--ao={audio_output}")
 
         if sys.platform == "win32":
-            program = (
-                shutil.which("mpv")
-                or shutil.which("mpv.exe")
-                or "mpv"
-            )
-            self._proc.start(program, args)
+            self._proc.start(self._find_mpv(), args)
         else:
             self._proc.start(sys.executable, ["-c", _UNIX_LAUNCHER, *args])
         self._try_connect(0)

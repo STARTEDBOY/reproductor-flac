@@ -23,6 +23,24 @@ jobs:
           python -m pip install --upgrade pip
           python -m pip install PySide6 mutagen numpy pyinstaller
 
+      - name: Download bundled mpv
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $url = 'https://downloads.sourceforge.net/project/mpv-player-windows/release/mpv-0.39.0-x86_64.7z'
+          $out = 'mpv_download.7z'
+          Invoke-WebRequest -Uri $url -OutFile $out -UseBasicParsing
+          7z x -y $out -ompv_extract | Out-Null
+          $exe = Get-ChildItem -Path mpv_extract -Recurse -Filter mpv.exe | Select-Object -First 1
+          if (-not $exe) { throw 'No se encontro mpv.exe en el archivo descargado' }
+          $root = $exe.DirectoryName
+          New-Item -ItemType Directory -Force -Path mpv | Out-Null
+          Copy-Item (Join-Path $root 'mpv.exe') mpv\ -Force
+          if (Test-Path (Join-Path $root 'mpv.com')) { Copy-Item (Join-Path $root 'mpv.com') mpv\ -Force }
+          Get-ChildItem -Path $root -Filter '*.dll' -ErrorAction SilentlyContinue | ForEach-Object { Copy-Item $_.FullName mpv\ -Force }
+          Remove-Item $out -Force
+          Remove-Item mpv_extract -Recurse -Force
+
       - name: Build portable app
         run: |
           python -m PyInstaller --noconfirm --clean reproductor-flac.spec

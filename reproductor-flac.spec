@@ -6,11 +6,15 @@ from pathlib import Path
 block_cipher = None
 base = Path(SPECPATH)
 
+_datas = [(str(base / "assets"), "assets")]
+if (base / "mpv").exists():
+    _datas.append((str(base / "mpv"), "mpv"))
+
 a = Analysis(
     [str(base / "main.py")],
     pathex=[str(base)],
     binaries=[],
-    datas=[(str(base / "assets"), "assets")],
+    datas=_datas,
     hiddenimports=[],
     hookspath=[],
     hooksconfig={},

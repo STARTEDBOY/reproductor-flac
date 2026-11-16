@@ -8,3 +8,12 @@ venv/
 # Registros y temporales
 *.log
 *.tmp
+
+# Builds y binarios descargados
+/build/
+/dist/
+/mpv/
+/mpv_extract/
+*.7z
+ReproductorFLAC-windows-portable.zip
+

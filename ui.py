@@ -14,6 +14,7 @@ from PySide6.QtCore import (
     QEvent,
     QPoint,
     QPropertyAnimation,
+    QRect,
     QSettings,
     QSize,
     Qt,
@@ -24,6 +25,7 @@ from PySide6.QtCore import (
 from PySide6.QtGui import (
     QColor,
     QFont,
+    QFontMetrics,
     QKeySequence,
     QPainter,
     QPixmap,
@@ -670,24 +672,32 @@ class MainWindow(QMainWindow):
         cover_row.addStretch(1)
         layout.addSpacing(6)
         layout.addLayout(cover_row)
-        layout.addSpacing(8)
+        layout.addSpacing(10)
+
+        info = QVBoxLayout()
+        info.setContentsMargins(0, 0, 0, 0)
+        info.setSpacing(2)
 
         self.title_label = QLabel(tr("nothing_playing"))
         self.title_label.setObjectName("title")
         self.title_label.setWordWrap(True)
-        self.title_label.setFixedHeight(68)
         self.title_label.setAlignment(
-            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop
+            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
         )
-        layout.addWidget(self.title_label)
+        info.addWidget(self.title_label)
 
         self.artist_label = QLabel("—")
         self.artist_label.setObjectName("artist")
-        layout.addWidget(self.artist_label)
+        self.artist_label.setWordWrap(False)
+        info.addWidget(self.artist_label)
 
         self.meta_label = QLabel("")
         self.meta_label.setObjectName("meta")
-        layout.addWidget(self.meta_label)
+        self.meta_label.setWordWrap(False)
+        info.addWidget(self.meta_label)
+
+        layout.addLayout(info)
+        layout.addSpacing(6)
 
         self.lyrics_label = QLabel("")
         self.lyrics_label.setObjectName("lyrics")
@@ -700,7 +710,7 @@ class MainWindow(QMainWindow):
         self._lyrics_opacity.setEnabled(False)
         self.lyrics_label.setGraphicsEffect(self._lyrics_opacity)
         self.lyrics_box = LyricsBox(self.lyrics_label)
-        self.lyrics_box.setFixedHeight(86)
+        self.lyrics_box.setFixedHeight(96)
         self.lyrics_box.setVisible(False)
         layout.addWidget(self.lyrics_box)
 
@@ -802,6 +812,58 @@ class MainWindow(QMainWindow):
         self.cover_label.setPixmap(self._placeholder())
         return panel
 
+    # ------------------------------------------------------- textos del panel
+    def _player_text_width(self) -> int:
+        """Ancho útil del bloque de texto dentro del panel."""
+        width = self.player_panel.width() - 48
+        return width if width > 120 else 392
+
+    def _set_title_text(self, text: str) -> None:
+        """Coloca el título en una o dos líneas, sin huecos ni recortes."""
+        font = text_font(text, 30, bold=True)
+        metrics = QFontMetrics(font)
+        width = self._player_text_width()
+
+        def line_count(value: str) -> int:
+            rect = metrics.boundingRect(
+                QRect(0, 0, width, 10000),
+                int(Qt.TextFlag.TextWordWrap),
+                value,
+            )
+            spacing = max(1, metrics.lineSpacing())
+            return max(1, (rect.height() + spacing - 1) // spacing)
+
+        shown = text
+        if line_count(shown) > 2:
+            # Recorta con puntos suspensivos si no cabe en dos líneas.
+            low, high = 0, len(shown)
+            while low < high:
+                middle = (low + high + 1) // 2
+                candidate = shown[:middle].rstrip() + "…"
+                if line_count(candidate) <= 2:
+                    low = middle
+                else:
+                    high = middle - 1
+            shown = shown[:low].rstrip() + "…"
+
+        self.title_label.setText(shown)
+        self.title_label.setStyleSheet(text_style(text, 30, bold=True))
+        self.title_label.setToolTip(text)
+        self.title_label.setFixedHeight(
+            line_count(shown) * max(1, metrics.lineSpacing()) + 2
+        )
+
+    def _set_line_text(self, label: QLabel, text: str, size: int) -> None:
+        """Pone artista o álbum en una línea, recortando si no cabe."""
+        label.setStyleSheet(text_style(text, size))
+        metrics = QFontMetrics(text_font(text, size))
+        label.setText(
+            metrics.elidedText(
+                text, Qt.TextElideMode.ElideRight, self._player_text_width()
+            )
+        )
+        label.setToolTip(text)
+
     def _apply_style(self) -> None:
         self.setStyleSheet(build_style(self.bg_mode, self.bg_color))
         set_icon_palette(self.bg_mode, self.bg_color)
@@ -889,20 +951,17 @@ class MainWindow(QMainWindow):
         self._update_repeat_button()
         self.volume_title.setText(tr("volume"))
         if self.current is None:
-            self.title_label.setText(tr("nothing_playing"))
-            self.title_label.setStyleSheet(
-                text_style(tr("nothing_playing"), 30, bold=True)
-            )
+            self._set_title_text(tr("nothing_playing"))
+            self.title_label.setToolTip("")
         else:
-            self.artist_label.setText(self.current.display_artist)
-            self.artist_label.setStyleSheet(
-                text_style(self.current.display_artist, 21)
+            self._set_title_text(self.current.title)
+            self._set_line_text(
+                self.artist_label, self.current.display_artist, 21
             )
             album = self.current.display_album
             quality = self.current.quality
             meta_text = f"{album} · {quality}" if quality else album
-            self.meta_label.setText(meta_text)
-            self.meta_label.setStyleSheet(text_style(meta_text, 16))
+            self._set_line_text(self.meta_label, meta_text, 16)
         self._refresh_play_text()
         self._refresh_state_text()
         self._update_sleep_label()
@@ -1412,16 +1471,12 @@ class MainWindow(QMainWindow):
         self.time_current.setText(format_time(self.position))
         self.time_total.setText(format_time(track.duration))
 
-        self.title_label.setText(track.title)
-        self.title_label.setStyleSheet(text_style(track.title, 30, bold=True))
-        self.title_label.setToolTip(track.title)
-        self.artist_label.setText(track.display_artist)
-        self.artist_label.setStyleSheet(text_style(track.display_artist, 21))
+        self._set_title_text(track.title)
+        self._set_line_text(self.artist_label, track.display_artist, 21)
         album = track.display_album
         quality = track.quality
         meta_text = f"{album} · {quality}" if quality else album
-        self.meta_label.setText(meta_text)
-        self.meta_label.setStyleSheet(text_style(meta_text, 16))
+        self._set_line_text(self.meta_label, meta_text, 16)
         self._load_lyrics(track)
         self._update_cover(track)
 
@@ -2257,10 +2312,10 @@ class MainWindow(QMainWindow):
         self.progress.setEnabled(False)
         self.time_current.setText("0:00")
         self.time_total.setText("0:00")
-        self.title_label.setText(tr("nothing_playing"))
+        self._set_title_text(tr("nothing_playing"))
         self.title_label.setToolTip("")
-        self.artist_label.setText("—")
-        self.meta_label.setText("")
+        self._set_line_text(self.artist_label, "—", 21)
+        self._set_line_text(self.meta_label, "", 16)
         self._clear_lyrics()
         self.cover_label.setPixmap(self._placeholder())
         if self.bg_mode == "cover":

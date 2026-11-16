@@ -9,6 +9,7 @@ import time
 from pathlib import Path
 
 from PySide6.QtCore import (
+    QByteArray,
     QEasingCurve,
     QEvent,
     QPoint,
@@ -1002,7 +1003,9 @@ class MainWindow(QMainWindow):
 
     def _restore_state(self) -> None:
         geometry = self.settings.value("geometry")
-        if geometry is not None:
+        # QSettings puede devolver tipos antiguos o corruptos; solo se
+        # restaura si es un QByteArray válido guardado por saveGeometry().
+        if isinstance(geometry, QByteArray) and not geometry.isEmpty():
             self.restoreGeometry(geometry)
         self.shuffle_btn.setChecked(self.shuffle)
         self.repeat_btn.setChecked(self.repeat != "off")

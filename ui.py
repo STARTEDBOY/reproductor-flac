@@ -52,6 +52,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from crt import CRT_MODES, CrtOverlay
 from dialogs import (
     LYRICS_EFFECTS,
     FolderDialog,
@@ -256,6 +257,11 @@ class MainWindow(QMainWindow):
             bool(self.settings.value("spectrum", True, bool))
             and SPECTRUM_AVAILABLE
         )
+        self.crt_mode = str(
+            self.settings.value("crt_mode", "off") or "off"
+        )
+        if self.crt_mode not in CRT_MODES:
+            self.crt_mode = "off"
 
         self._session_restored = False
         self.resume_path = str(self.settings.value("last_path", "") or "")
@@ -304,6 +310,11 @@ class MainWindow(QMainWindow):
         self.player_panel = self._build_player_panel()
         self._apply_panel_order()
 
+        self.crt_overlay = CrtOverlay(self.backdrop)
+        self.crt_overlay.setGeometry(self.backdrop.rect())
+        self.crt_overlay.set_mode(self.crt_mode)
+        self.backdrop.installEventFilter(self)
+
     def _apply_panel_order(self) -> None:
         """Coloca el reproductor a la izquierda, a la derecha o centrado."""
         while self.outer.count():
@@ -319,6 +330,8 @@ class MainWindow(QMainWindow):
         else:
             self.outer.addWidget(self.library_panel, 1)
             self.outer.addWidget(self.player_panel, 0)
+        if hasattr(self, "crt_overlay"):
+            self.crt_overlay.raise_()
 
     def _set_table_headers(self) -> None:
         """Traduce los encabezados y les da la misma alineación que las celdas."""
@@ -2264,6 +2277,16 @@ class MainWindow(QMainWindow):
         else:
             self.spectrum.stop()
 
+    def _set_crt_mode(self, mode: str) -> None:
+        mode = mode if mode in CRT_MODES else "off"
+        if mode == self.crt_mode:
+            return
+        self.crt_mode = mode
+        self.settings.setValue("crt_mode", mode)
+        self.crt_overlay.setGeometry(self.backdrop.rect())
+        self.crt_overlay.set_mode(mode)
+        self.crt_overlay.raise_()
+
     def _open_settings(self) -> None:
         dialog = SettingsDialog(
             self.language,
@@ -2274,6 +2297,7 @@ class MainWindow(QMainWindow):
             self.lyrics_effect_name,
             self.spectrum_enabled,
             SPECTRUM_AVAILABLE,
+            self.crt_mode,
             self,
         )
         dialog.setStyleSheet(self.styleSheet())
@@ -2313,6 +2337,9 @@ class MainWindow(QMainWindow):
 
         if dialog.spectrum_enabled != self.spectrum_enabled:
             self._set_spectrum_enabled(dialog.spectrum_enabled)
+
+        if dialog.crt_mode != self.crt_mode:
+            self._set_crt_mode(dialog.crt_mode)
 
     # ---------------------------------------------------------- temporizador
     def _open_sleep_dialog(self) -> None:
@@ -2399,6 +2426,11 @@ class MainWindow(QMainWindow):
 
     # -------------------------------------------------------------- keyboard
     def eventFilter(self, watched, event) -> bool:  # noqa: N802 - API de Qt
+        if watched is self.backdrop and event.type() == QEvent.Type.Resize:
+            if hasattr(self, "crt_overlay"):
+                self.crt_overlay.setGeometry(self.backdrop.rect())
+                self.crt_overlay.raise_()
+            return super().eventFilter(watched, event)
         if watched is self.table and event.type() == QEvent.Type.KeyPress:
             if event.key() in (Qt.Key.Key_Up, Qt.Key.Key_Down):
                 return super().eventFilter(watched, event)
@@ -2470,6 +2502,7 @@ class MainWindow(QMainWindow):
         self.settings.setValue("background_mode", self.bg_mode)
         self.settings.setValue("background_color", self.bg_color)
         self.settings.setValue("background_image", self.bg_image_path)
+        self.settings.setValue("crt_mode", self.crt_mode)
         self.settings.setValue("favorites", sorted(self.favorites))
         if self.current is not None:
             self.settings.setValue("last_path", self.current.path)

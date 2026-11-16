@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from crt import CRT_MODES
 from library import Track, format_time
 from i18n import LANGUAGES, tr
 from theme import text_font, text_style
@@ -428,6 +429,7 @@ class SettingsDialog(QDialog):
         lyrics_effect: str = "fade",
         spectrum_enabled: bool = True,
         spectrum_available: bool = True,
+        crt_mode: str = "off",
         parent: QWidget | None = None,
     ):
         super().__init__(parent)
@@ -438,6 +440,7 @@ class SettingsDialog(QDialog):
         self.library_hidden = library_hidden
         self.lyrics_effect = lyrics_effect
         self.spectrum_enabled = spectrum_enabled and spectrum_available
+        self.crt_mode = crt_mode if crt_mode in CRT_MODES else "off"
         self.setWindowTitle(tr("settings_title"))
         self.setModal(True)
         self.setMinimumWidth(560)
@@ -507,6 +510,23 @@ class SettingsDialog(QDialog):
             self.spectrum_check.setToolTip(tr("spectrum_unavailable"))
         layout.addWidget(self.spectrum_check)
 
+        crt_label = QLabel(tr("crt_effect"))
+        crt_label.setObjectName("small")
+        layout.addWidget(crt_label)
+
+        self.crt_combo = QComboBox()
+        self.crt_combo.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.crt_combo.setFixedWidth(240)
+        for key in CRT_MODES:
+            self.crt_combo.addItem(tr(f"crt_{key}"), key)
+        if self.crt_mode in CRT_MODES:
+            self.crt_combo.setCurrentIndex(CRT_MODES.index(self.crt_mode))
+        _fit_combo(self.crt_combo)
+        self.crt_combo.currentIndexChanged.connect(
+            lambda _index: _fit_combo(self.crt_combo)
+        )
+        layout.addWidget(self.crt_combo)
+
         self.hide_check = QCheckBox(tr("hide_library"))
         self.hide_check.setChecked(library_hidden)
         self.hide_check.setFocusPolicy(Qt.FocusPolicy.NoFocus)
@@ -539,6 +559,7 @@ class SettingsDialog(QDialog):
         self.image_path = self.picker.image_path
         self.library_hidden = self.hide_check.isChecked()
         self.spectrum_enabled = self.spectrum_check.isChecked()
+        self.crt_mode = str(self.crt_combo.currentData() or "off")
         key = self.lyrics_combo.currentData()
         if key:
             self.lyrics_effect = str(key)

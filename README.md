@@ -34,6 +34,8 @@ puedes usar **EXAMINAR…**), o ejecuta:
 - Visualizador de **espectro** superpuesto al borde inferior de la portada:
   barras segmentadas en blanco y negro que reaccionan al audio del sistema.
   Se puede desactivar en **Ajustes**.
+- Efecto **CRT** opcional sobre toda la ventana: scanlines, viñeta y tinte
+  **monocromo**, **ámbar** o **verde fósforo**, elegido en **Ajustes**.
 - **Historial** de reproducción que se guarda entre sesiones, con dos vistas:
   **últimas reproducidas** y **más escuchadas**, ordenadas por fecha o por
   número de reproducciones. Cada pista muestra su contador en la columna `#`.
@@ -53,8 +55,8 @@ puedes usar **EXAMINAR…**), o ejecuta:
   o con una **imagen propia**, todo desde **Ajustes**.
 - Panel del reproductor a la **izquierda o a la derecha** con el icono de intercambio.
 - Botón único de **Ajustes** (engranaje) en **AHORA SUENA**: reúne el idioma,
-  el fondo, el efecto de las letras, el visualizador y la visibilidad de la
-  biblioteca.
+  el fondo, el efecto de las letras, el visualizador, el efecto CRT y la
+  visibilidad de la biblioteca.
 - Iconos pixel art propios para aleatorio, repetir, temporizador y ajustes,
   guardados en `assets/icons/`. El de cambiar de lado sigue dibujado en la
   rejilla de 12 × 12.
@@ -126,6 +128,7 @@ aparece desactivado en **Ajustes**.
 | `dialogs.py` | Diálogos de ajustes, carpeta, listas, temporizador e información |
 | `library.py` | Escaneo de etiquetas, caché de biblioteca y portadas |
 | `spectrum.py` | Captura con `parec` y visualizador de espectro |
+| `crt.py` | Capa de efecto CRT: scanlines, tinte y viñeta |
 | `i18n.py` | Traducciones de la interfaz y selector de idioma |
 | `mpv_backend.py` | Comunicación con mpv por IPC |
 | `assets/fonts/` | Press Start 2P, VT323 y DotGothic16 |
@@ -153,6 +156,7 @@ Puedes borrar la caché sin miedo; se regenera al abrir la aplicación. Si borra
 - No modifica ni mueve tus archivos: solo los lee.
 - El visualizador escucha el monitor del altavoz por defecto, así que también
   reacciona a otros sonidos del sistema mientras está abierto.
+- El efecto CRT es solo una capa de dibujo: no modifica el audio ni los archivos.
 - La fuente DotGothic16 se incluye con licencia SIL OFL 1.1
   (`assets/fonts/LICENSE-DotGothic16.txt`).
 - Si mpv no arranca, prueba a lanzar desde una terminal para ver el error.

@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import shutil
 import subprocess
+import sys
 import threading
 
 try:
@@ -29,7 +30,12 @@ MAX_HZ = 16000.0
 SILENCE_DB = -58.0
 FULL_DB = -8.0
 
-SPECTRUM_AVAILABLE = np is not None and shutil.which("parec") is not None
+# En Linux usa parec (PulseAudio/PipeWire). En Windows se desactiva por ahora.
+SPECTRUM_AVAILABLE = (
+    sys.platform != "win32"
+    and np is not None
+    and shutil.which("parec") is not None
+)
 
 
 def _monitor_source() -> str:

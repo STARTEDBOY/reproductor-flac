@@ -1,9 +1,14 @@
-"""Controlador de mpv mediante su servidor IPC (JSON por socket Unix)."""
+"""Controlador de mpv mediante su servidor IPC.
+
+En Linux usa un socket Unix; en Windows usa un named pipe. En ambos casos
+mpv expone la interfaz JSON por ``--input-ipc-server``.
+"""
 
 from __future__ import annotations
 
 import json
 import os
+import shutil
 import sys
 import tempfile
 from pathlib import Path
@@ -22,9 +27,10 @@ OBSERVED = {
     "idle-active": 6,
 }
 
-# Arranca mpv desde un pequeño lanzador que le pone PR_SET_PDEATHSIG: si la
-# aplicación muere de forma abrupta, mpv recibe SIGTERM y no queda huérfano.
-_LAUNCHER = (
+# En Linux se arranca mpv desde un pequeño lanzador que le pone
+# PR_SET_PDEATHSIG: si la aplicación muere de forma abrupta, mpv recibe
+# SIGTERM y no queda huérfano. En Windows se lanza el ejecutable directo.
+_UNIX_LAUNCHER = (
     "import ctypes, os, signal, sys\n"
     "try:\n"
     "    ctypes.CDLL('libc.so.6', use_errno=True).prctl(1, int(signal.SIGTERM), 0, 0, 0)\n"
@@ -67,21 +73,26 @@ class MpvController(QObject):
         self._socket.connected.connect(self._on_connected)
         self._socket.disconnected.connect(self._on_disconnected)
 
-        uid = os.getuid() if hasattr(os, "getuid") else 0
-        self._socket_path = str(
-            Path(tempfile.gettempdir()) / f"reproductor-flac-{uid}-{os.getpid()}.sock"
-        )
+        if sys.platform == "win32":
+            self._socket_path = rf"\\.\pipe\reproductor-flac-{os.getpid()}"
+        else:
+            uid = os.getuid() if hasattr(os, "getuid") else 0
+            self._socket_path = str(
+                Path(tempfile.gettempdir())
+                / f"reproductor-flac-{uid}-{os.getpid()}.sock"
+            )
 
     # ------------------------------------------------------------------ start
     def start(self) -> None:
         if self._proc.state() != QProcess.ProcessState.NotRunning:
             return
-        try:
-            Path(self._socket_path).unlink()
-        except FileNotFoundError:
-            pass
-        except OSError:
-            pass
+        if sys.platform != "win32":
+            try:
+                Path(self._socket_path).unlink()
+            except FileNotFoundError:
+                pass
+            except OSError:
+                pass
 
         args = [
             "--idle=yes",
@@ -100,7 +111,15 @@ class MpvController(QObject):
         if audio_output:
             args.append(f"--ao={audio_output}")
 
-        self._proc.start(sys.executable, ["-c", _LAUNCHER, *args])
+        if sys.platform == "win32":
+            program = (
+                shutil.which("mpv")
+                or shutil.which("mpv.exe")
+                or "mpv"
+            )
+            self._proc.start(program, args)
+        else:
+            self._proc.start(sys.executable, ["-c", _UNIX_LAUNCHER, *args])
         self._try_connect(0)
 
     def _try_connect(self, attempt: int) -> None:
@@ -265,7 +284,8 @@ class MpvController(QObject):
             self._proc.terminate()
             if not self._proc.waitForFinished(800):
                 self._proc.kill()
-        try:
-            Path(self._socket_path).unlink()
-        except OSError:
-            pass
+        if sys.platform != "win32":
+            try:
+                Path(self._socket_path).unlink()
+            except OSError:
+                pass

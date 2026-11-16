@@ -6,6 +6,8 @@ de audio, así que reproduce FLAC sin conversiones ni pérdida de calidad.
 
 ## Abrir
 
+### Linux
+
 ```bash
 ~/reproductor-flac/run.sh
 ```
@@ -19,6 +21,28 @@ puedes usar **EXAMINAR…**), o ejecuta:
 ```bash
 ~/reproductor-flac/run.sh /ruta/a/tu/musica
 ```
+
+### Windows
+
+1. Instala [Python 3](https://www.python.org/downloads/) y [mpv](https://mpv.io/installation/)
+   y asegúrate de que `python` (o `py`) y `mpv` estén en el `PATH`.
+2. Instala las dependencias:
+
+   ```bat
+   py -3 -m pip install PySide6 mutagen numpy
+   ```
+
+3. Ejecuta `run.bat` o, desde la carpeta del proyecto:
+
+   ```bat
+   py -3 main.py
+   ```
+
+   También puedes pasar la carpeta de música: `py -3 main.py C:\ruta\a\tu\musica`.
+
+En Windows el visualizador de espectro se desactiva automáticamente (depende
+de `parec`/PulseAudio en Linux); el resto de funciones está disponible. Se puede
+probar con `set REPRODUCTOR_AO=null` antes de lanzar si no hay salida de audio.
 
 ## Funciones
 
@@ -102,21 +126,29 @@ las opciones de favoritos, listas e información de la pista.
 
 ## Requisitos
 
-- `python3`
+- Python 3
 - `PySide6`
 - `mutagen`
-- `numpy` y `parec` (PulseAudio/PipeWire) para el visualizador de espectro
 - `mpv` en el `PATH`
+- Linux: `numpy` y `parec` (PulseAudio/PipeWire) para el visualizador de espectro
 
-En este equipo ya están instalados. Si faltara alguno:
+En Linux, si faltara alguno:
 
 ```bash
 sudo dnf install mpv pulseaudio-utils
 python3 -m pip install --user PySide6 mutagen numpy
 ```
 
-Si falta `numpy` o `parec`, el reproductor sigue funcionando y el visualizador
-aparece desactivado en **Ajustes**.
+En Windows:
+
+```bat
+py -3 -m pip install PySide6 mutagen numpy
+```
+
+e instala mpv y añádelo al `PATH`.
+
+Si falta `numpy` o `parec`, o en Windows, el reproductor sigue funcionando y el
+visualizador aparece desactivado en **Ajustes**.
 
 ## Estructura
 
@@ -137,13 +169,14 @@ aparece desactivado en **Ajustes**.
 
 ## Datos guardados
 
-- Ajustes, favoritos, idioma y última sesión:
-  `~/.config/STARTED/Reproductor FLAC.conf`
-- La imagen de fondo se guarda como ruta en ese mismo archivo; el reproductor
-  no copia ni modifica la imagen original.
-- Listas personalizadas: `~/.config/STARTED/playlists.json`
+- Ajustes, favoritos, idioma y última sesión: configuración nativa del sistema
+  (en Linux, `~/.config/STARTED/Reproductor FLAC.conf`).
+- La imagen de fondo se guarda como ruta; el reproductor no copia ni modifica
+  la imagen original.
+- Listas personalizadas: `~/.config/STARTED/playlists.json` (bajo tu carpeta de
+  usuario).
 - Historial, contadores y últimas reproducciones:
-  `~/.config/STARTED/history.json`
+  `~/.config/STARTED/history.json`.
 - Caché de la biblioteca: `~/.cache/reproductor-flac/library.json`
 - Caché de portadas: `~/.cache/reproductor-flac/*.img`
 
@@ -154,11 +187,13 @@ Puedes borrar la caché sin miedo; se regenera al abrir la aplicación. Si borra
 ## Notas
 
 - No modifica ni mueve tus archivos: solo los lee.
-- El visualizador escucha el monitor del altavoz por defecto, así que también
-  reacciona a otros sonidos del sistema mientras está abierto.
+- En Linux, el visualizador escucha el monitor del altavoz por defecto, así que
+  también reacciona a otros sonidos del sistema mientras está abierto. En
+  Windows el visualizador se desactiva automáticamente.
 - El efecto CRT es solo una capa de dibujo: no modifica el audio ni los archivos.
 - La fuente DotGothic16 se incluye con licencia SIL OFL 1.1
   (`assets/fonts/LICENSE-DotGothic16.txt`).
-- Si mpv no arranca, prueba a lanzar desde una terminal para ver el error.
-- En equipos sin salida de audio se puede probar con
-  `REPRODUCTOR_AO=null ~/reproductor-flac/run.sh`.
+- Si mpv no arranca, comprueba que `mpv` esté en el `PATH` y prueba a lanzar
+  desde una terminal para ver el error.
+- En equipos sin salida de audio se puede probar con `REPRODUCTOR_AO=null`
+  (`export` en Linux, `set` en Windows).

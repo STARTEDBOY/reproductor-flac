@@ -426,6 +426,8 @@ class SettingsDialog(QDialog):
         image_path: str = "",
         library_hidden: bool = False,
         lyrics_effect: str = "fade",
+        spectrum_enabled: bool = True,
+        spectrum_available: bool = True,
         parent: QWidget | None = None,
     ):
         super().__init__(parent)
@@ -435,6 +437,7 @@ class SettingsDialog(QDialog):
         self.image_path = image_path
         self.library_hidden = library_hidden
         self.lyrics_effect = lyrics_effect
+        self.spectrum_enabled = spectrum_enabled and spectrum_available
         self.setWindowTitle(tr("settings_title"))
         self.setModal(True)
         self.setMinimumWidth(560)
@@ -496,6 +499,14 @@ class SettingsDialog(QDialog):
         )
         layout.addWidget(self.lyrics_combo)
 
+        self.spectrum_check = QCheckBox(tr("spectrum_visualizer"))
+        self.spectrum_check.setChecked(self.spectrum_enabled)
+        self.spectrum_check.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        if not spectrum_available:
+            self.spectrum_check.setEnabled(False)
+            self.spectrum_check.setToolTip(tr("spectrum_unavailable"))
+        layout.addWidget(self.spectrum_check)
+
         self.hide_check = QCheckBox(tr("hide_library"))
         self.hide_check.setChecked(library_hidden)
         self.hide_check.setFocusPolicy(Qt.FocusPolicy.NoFocus)
@@ -527,6 +538,7 @@ class SettingsDialog(QDialog):
         self.color = self.picker.color
         self.image_path = self.picker.image_path
         self.library_hidden = self.hide_check.isChecked()
+        self.spectrum_enabled = self.spectrum_check.isChecked()
         key = self.lyrics_combo.currentData()
         if key:
             self.lyrics_effect = str(key)

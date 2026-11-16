@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import random
+import time
 from pathlib import Path
 
 from PySide6.QtCore import (
@@ -71,6 +72,7 @@ from library import (
     scan_library,
 )
 from mpv_backend import MpvController
+from spectrum import SPECTRUM_AVAILABLE, SpectrumWidget
 from theme import (
     CONTROL_ICON_SIZE,
     DEFAULT_COVER_SIZE,
@@ -109,6 +111,8 @@ MAIN_ALIGNMENTS = (
 
 MIN_WINDOW_SIZE = QSize(1080, 760)
 DEFAULT_WINDOW_SIZE = QSize(1220, 820)
+HISTORY_LIMIT = 3000
+SPECTRUM_HEIGHT = 78
 
 
 class LyricsBox(QWidget):
@@ -236,6 +240,23 @@ class MainWindow(QMainWindow):
         self.mode = "library"
         self._load_playlists()
 
+        self.history_file = self.config_dir / "history.json"
+        self.history_plays: list[dict] = []
+        self.history_counts: dict[str, int] = {}
+        self.history_last: dict[str, float] = {}
+        self._history_view = str(
+            self.settings.value("history_view", "recent") or "recent"
+        )
+        if self._history_view not in ("recent", "most"):
+            self._history_view = "recent"
+        self._counted_current: str | None = None
+        self._load_history()
+
+        self.spectrum_enabled = (
+            bool(self.settings.value("spectrum", True, bool))
+            and SPECTRUM_AVAILABLE
+        )
+
         self._session_restored = False
         self.resume_path = str(self.settings.value("last_path", "") or "")
         try:
@@ -264,6 +285,9 @@ class MainWindow(QMainWindow):
         self._apply_style()
         self._connect_signals()
         self._restore_state()
+
+        if self.spectrum_enabled:
+            self.spectrum.start()
 
         self.mpv.start()
         QTimer.singleShot(300, self._open_initial_library)
@@ -420,10 +444,12 @@ class MainWindow(QMainWindow):
         self.library_mode_btn = QPushButton(tr("library"))
         self.favorites_mode_btn = QPushButton(tr("favorites"))
         self.playlists_mode_btn = QPushButton(tr("playlists"))
+        self.history_mode_btn = QPushButton(tr("history"))
         for button in (
             self.library_mode_btn,
             self.favorites_mode_btn,
             self.playlists_mode_btn,
+            self.history_mode_btn,
         ):
             button.setObjectName("small")
             button.setCheckable(True)
@@ -480,6 +506,19 @@ class MainWindow(QMainWindow):
 
         self.playlist_bar.setVisible(False)
         layout.addWidget(self.playlist_bar)
+
+        self.history_bar = QWidget()
+        history_layout = QHBoxLayout(self.history_bar)
+        history_layout.setContentsMargins(0, 0, 0, 0)
+        history_layout.setSpacing(6)
+        self.history_combo = QComboBox()
+        self.history_combo.setSizePolicy(
+            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed
+        )
+        self.history_combo.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        history_layout.addWidget(self.history_combo, 1)
+        self.history_bar.setVisible(False)
+        layout.addWidget(self.history_bar)
 
         self.search = QLineEdit()
         self.search.setPlaceholderText(tr("search_placeholder"))
@@ -604,6 +643,13 @@ class MainWindow(QMainWindow):
         self.cover_label.setObjectName("cover")
         self.cover_label.setFixedSize(self.cover_size, self.cover_size)
         self.cover_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.spectrum = SpectrumWidget(self.cover_label)
+        self.spectrum.setGeometry(
+            1,
+            self.cover_size - SPECTRUM_HEIGHT - 1,
+            self.cover_size - 2,
+            SPECTRUM_HEIGHT,
+        )
         cover_row = QHBoxLayout()
         cover_row.addStretch(1)
         cover_row.addWidget(self.cover_label)
@@ -802,6 +848,8 @@ class MainWindow(QMainWindow):
         self.library_mode_btn.setText(tr("library"))
         self.favorites_mode_btn.setText(tr("favorites"))
         self.playlists_mode_btn.setText(tr("playlists"))
+        self.history_mode_btn.setText(tr("history"))
+        self._refresh_history_combo()
         self.new_playlist_btn.setText(tr("new"))
         self.delete_playlist_btn.setText(tr("delete"))
         self.add_songs_btn.setText(tr("add_ellipsis"))
@@ -888,8 +936,14 @@ class MainWindow(QMainWindow):
         self.playlists_mode_btn.clicked.connect(
             lambda _checked=False: self._set_mode("playlist")
         )
+        self.history_mode_btn.clicked.connect(
+            lambda _checked=False: self._set_mode("history")
+        )
         self.playlist_combo.currentIndexChanged.connect(
             self._playlist_changed
+        )
+        self.history_combo.currentIndexChanged.connect(
+            self._history_view_changed
         )
         self.new_playlist_btn.clicked.connect(
             lambda _checked=False: self._new_playlist()
@@ -948,6 +1002,7 @@ class MainWindow(QMainWindow):
         self.volume_value.setText(str(volume))
 
         self._refresh_playlist_combo()
+        self._refresh_history_combo()
         self._set_mode("library")
 
     # ------------------------------------------------------------- library
@@ -1176,6 +1231,8 @@ class MainWindow(QMainWindow):
             ]
         elif self.mode == "playlist":
             base = self._playlist_tracks()
+        elif self.mode == "history":
+            base = self._history_tracks()
         else:
             base = self.tracks
 
@@ -1210,6 +1267,10 @@ class MainWindow(QMainWindow):
             self.count_label.setText(
                 tr("playlist_count", n=len(self.visible), name=name.upper())
             )
+        elif self.mode == "history":
+            self.count_label.setText(
+                tr("history_count", n=len(self.visible))
+            )
         elif len(self.visible) == len(self.tracks):
             self.count_label.setText(library_summary(self.tracks))
         else:
@@ -1239,7 +1300,13 @@ class MainWindow(QMainWindow):
         self.table.clearContents()
         self.table.setRowCount(len(self.visible))
         for row, track in enumerate(self.visible):
-            number = f"{track.tracknumber:02d}" if track.tracknumber else "—"
+            play_count = self.history_counts.get(track.path, 0)
+            if self.mode == "history":
+                number = f"×{play_count}" if play_count else "—"
+            else:
+                number = (
+                    f"{track.tracknumber:02d}" if track.tracknumber else "—"
+                )
             is_fav = track.path in self.favorites
             values = [
                 "",
@@ -1259,6 +1326,8 @@ class MainWindow(QMainWindow):
                 if column == 0:
                     item.setIcon(heart_icon(22, is_fav))
                     item.setToolTip(tr("tooltip_favorite"))
+                if column == 1 and self.mode == "history":
+                    item.setToolTip(tr("played_times", n=play_count))
                 if column == 2:
                     item.setToolTip(track.path)
                 self.table.setItem(row, column, item)
@@ -1305,6 +1374,7 @@ class MainWindow(QMainWindow):
         autoplay: bool = True,
     ) -> None:
         self.current = track
+        self._counted_current = None
         self.finished_queue = False
         self.duration = track.duration
         if track.duration > 0:
@@ -1566,10 +1636,14 @@ class MainWindow(QMainWindow):
             return
         self._set_play_text("play" if paused else "pause")
         self._set_state("paused" if paused else "playing")
+        if not paused:
+            self._record_play(self.current)
 
     def _on_loaded(self) -> None:
         if self.current is not None and not self.finished_queue:
             self._set_state("paused" if self.mpv.paused else "playing")
+            if not self.mpv.paused:
+                self._record_play(self.current)
 
     def _on_ready(self) -> None:
         if not self.tracks:
@@ -1672,6 +1746,129 @@ class MainWindow(QMainWindow):
         if track is not None:
             self._toggle_favorite(track)
 
+    # -------------------------------------------------------------- historial
+    def _load_history(self) -> None:
+        try:
+            data = json.loads(self.history_file.read_text(encoding="utf-8"))
+        except (OSError, ValueError):
+            data = {}
+        if not isinstance(data, dict):
+            data = {}
+
+        plays = data.get("plays", [])
+        if isinstance(plays, list):
+            for item in plays:
+                if not isinstance(item, dict):
+                    continue
+                path = str(item.get("path", ""))
+                try:
+                    moment = float(item.get("at", 0) or 0)
+                except (TypeError, ValueError):
+                    moment = 0.0
+                if path and moment > 0:
+                    self.history_plays.append(
+                        {"path": path, "at": moment}
+                    )
+        if len(self.history_plays) > HISTORY_LIMIT:
+            self.history_plays = self.history_plays[-HISTORY_LIMIT:]
+
+        counts = data.get("counts", {})
+        if isinstance(counts, dict):
+            for path, count in counts.items():
+                try:
+                    value = int(count)
+                except (TypeError, ValueError):
+                    continue
+                if value > 0:
+                    self.history_counts[str(path)] = value
+
+        last = data.get("last", {})
+        if isinstance(last, dict):
+            for path, moment in last.items():
+                try:
+                    value = float(moment)
+                except (TypeError, ValueError):
+                    continue
+                if value > 0:
+                    self.history_last[str(path)] = value
+
+    def _save_history(self) -> None:
+        payload = {
+            "plays": self.history_plays,
+            "counts": self.history_counts,
+            "last": self.history_last,
+        }
+        try:
+            self.history_file.parent.mkdir(parents=True, exist_ok=True)
+            temporary = self.history_file.with_suffix(".tmp")
+            temporary.write_text(
+                json.dumps(payload, ensure_ascii=False, indent=2),
+                encoding="utf-8",
+            )
+            temporary.replace(self.history_file)
+        except OSError:
+            pass
+
+    def _record_play(self, track: Track | None) -> None:
+        if track is None or self._counted_current == track.path:
+            return
+        self._counted_current = track.path
+        now = time.time()
+        self.history_plays.append({"path": track.path, "at": now})
+        if len(self.history_plays) > HISTORY_LIMIT:
+            del self.history_plays[:-HISTORY_LIMIT]
+        self.history_counts[track.path] = (
+            self.history_counts.get(track.path, 0) + 1
+        )
+        self.history_last[track.path] = now
+        self._save_history()
+        if self.mode == "history":
+            self._apply_filters()
+
+    def _history_tracks(self) -> list[Track]:
+        if self._history_view == "most":
+            paths = sorted(
+                self.history_counts,
+                key=lambda path: (
+                    -self.history_counts.get(path, 0),
+                    -self.history_last.get(path, 0.0),
+                ),
+            )
+        else:
+            paths = sorted(
+                self.history_last,
+                key=lambda path: -self.history_last.get(path, 0.0),
+            )
+        return [
+            self.track_by_path[path]
+            for path in paths
+            if path in self.track_by_path
+        ]
+
+    def _refresh_history_combo(self) -> None:
+        current = self.history_combo.currentData() or self._history_view
+        self.history_combo.blockSignals(True)
+        self.history_combo.clear()
+        self.history_combo.addItem(tr("history_recent"), "recent")
+        self.history_combo.addItem(tr("history_most"), "most")
+        index = self.history_combo.findData(current)
+        self.history_combo.setCurrentIndex(index if index >= 0 else 0)
+        for item_index in range(self.history_combo.count()):
+            text = self.history_combo.itemText(item_index)
+            self.history_combo.setItemData(
+                item_index, text_font(text, 18), Qt.ItemDataRole.FontRole
+            )
+        self.history_combo.blockSignals(False)
+        self._history_view = str(self.history_combo.currentData() or "recent")
+        self._fit_combo_font(self.history_combo)
+
+    def _history_view_changed(self, index: int) -> None:
+        key = self.history_combo.itemData(index) if index >= 0 else None
+        self._history_view = str(key or "recent")
+        self.settings.setValue("history_view", self._history_view)
+        self._fit_combo_font(self.history_combo)
+        self._apply_filters()
+
     # --------------------------------------------------------------- listas
     def _load_playlists(self) -> None:
         try:
@@ -1710,17 +1907,21 @@ class MainWindow(QMainWindow):
             self._set_state("playlists_save_error")
 
     def _set_mode(self, mode: str) -> None:
-        if mode not in ("library", "favorites", "playlist"):
+        if mode not in ("library", "favorites", "playlist", "history"):
             return
         self.mode = mode
         self.library_mode_btn.setChecked(mode == "library")
         self.favorites_mode_btn.setChecked(mode == "favorites")
         self.playlists_mode_btn.setChecked(mode == "playlist")
+        self.history_mode_btn.setChecked(mode == "history")
         self.playlist_bar.setVisible(mode == "playlist")
+        self.history_bar.setVisible(mode == "history")
         if mode == "playlist":
             if self.current_playlist is None and self.playlists:
                 self.current_playlist = 0
             self._refresh_playlist_combo()
+        elif mode == "history":
+            self._refresh_history_combo()
         self._apply_filters()
 
     def _refresh_playlist_combo(self) -> None:
@@ -2030,6 +2231,7 @@ class MainWindow(QMainWindow):
     def _reset_player(self) -> None:
         self.current = None
         self.current_cover = None
+        self._counted_current = None
         self.finished_queue = False
         self.duration = 0.0
         self.position = 0.0
@@ -2051,6 +2253,17 @@ class MainWindow(QMainWindow):
         self._set_state("ready")
 
     # ------------------------------------------------------------------ ajustes
+    def _set_spectrum_enabled(self, enabled: bool) -> None:
+        enabled = bool(enabled) and SPECTRUM_AVAILABLE
+        if enabled == self.spectrum_enabled:
+            return
+        self.spectrum_enabled = enabled
+        self.settings.setValue("spectrum", enabled)
+        if enabled:
+            self.spectrum.start()
+        else:
+            self.spectrum.stop()
+
     def _open_settings(self) -> None:
         dialog = SettingsDialog(
             self.language,
@@ -2059,6 +2272,8 @@ class MainWindow(QMainWindow):
             self.bg_image_path,
             self.library_hidden,
             self.lyrics_effect_name,
+            self.spectrum_enabled,
+            SPECTRUM_AVAILABLE,
             self,
         )
         dialog.setStyleSheet(self.styleSheet())
@@ -2095,6 +2310,9 @@ class MainWindow(QMainWindow):
             # Repite la línea actual para previsualizar el efecto elegido.
             self.lyric_index = -1
             self._update_lyrics(self.position)
+
+        if dialog.spectrum_enabled != self.spectrum_enabled:
+            self._set_spectrum_enabled(dialog.spectrum_enabled)
 
     # ---------------------------------------------------------- temporizador
     def _open_sleep_dialog(self) -> None:
@@ -2259,6 +2477,8 @@ class MainWindow(QMainWindow):
             self.settings.setValue("last_position", position)
         self.settings.sync()
         self._save_playlists()
+        self._save_history()
+        self.spectrum.stop()
         if self.scan_thread is not None and self.scan_thread.isRunning():
             self.scan_thread.wait(3000)
         self.mpv.shutdown()

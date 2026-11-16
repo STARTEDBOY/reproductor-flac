@@ -184,6 +184,22 @@ Puedes borrar la caché sin miedo; se regenera al abrir la aplicación. Si borra
 `playlists.json` se pierden las listas, pero no las canciones. Si borras
 `history.json` se reinician el historial y los contadores.
 
+## Compilar un portable para Windows
+
+No puedo generar un `.exe` de Windows desde este entorno Linux, pero el
+proyecto incluye lo necesario para crearlo:
+
+- **En un PC con Windows**: ejecuta `build_windows.bat`. Instala dependencias,
+  compila con PyInstaller y genera `dist\ReproductorFLAC\` (carpeta portable).
+  Comprímela en un `.zip` y compártela; el equipo destino necesita **mpv** en el
+  `PATH` (o `mpv.exe` accesible) para reproducir audio.
+- **Con GitHub Actions**: el flujo `.github/workflows/build-windows.yml` genera
+  un zip portable como artefacto (`workflow_dispatch` o al publicar un tag `v*`).
+  Descárgalo desde la pestaña Actions del repositorio.
+
+El empaquetado incluye los assets (fuentes, iconos) y usa `--windowed`
+(sin consola). El visualizador de espectro se desactiva en Windows.
+
 ## Notas
 
 - No modifica ni mueve tus archivos: solo los lee.

@@ -190,20 +190,20 @@ Puedes borrar la caché sin miedo; se regenera al abrir la aplicación. Si borra
 `playlists.json` se pierden las listas, pero no las canciones. Si borras
 `history.json` se reinician el historial y los contadores.
 
-## Compilar un portable para Windows (con mpv incluido)
+## Compilar portable e instalador para Windows (con mpv incluido)
 
-No puedo generar un `.exe` de Windows desde este entorno Linux, pero el
+No puedo generar un `.exe`/instalador de Windows desde este entorno Linux, pero el
 proyecto incluye lo necesario para crearlo:
 
 - **En un PC con Windows**: ejecuta `build_windows.bat`. Si no existe `mpv\`,
   descarga automáticamente una build portable de mpv (x86_64), instala
   dependencias, compila con PyInstaller y genera `dist\ReproductorFLAC\`
-  (carpeta portable con `mpv.exe` incluido). Comprímela en un `.zip` y
-  compártela: el equipo destino no necesita instalar mpv aparte.
+  (carpeta portable con `mpv.exe` incluido). Si [Inno Setup 6](https://jrsoftware.org/isinfo.php)
+  está instalado, también genera `dist\ReproductorFLAC-windows-installer.exe`.
 - **Con GitHub Actions**: el flujo `.github/workflows/build-windows.yml` descarga
-  mpv, compila y publica `ReproductorFLAC-windows-portable.zip` como artefacto
-  (`workflow_dispatch` o al publicar un tag `v*`). Descárgalo desde la pestaña
-  Actions del repositorio.
+  mpv, compila y publica como artefactos `ReproductorFLAC-windows-portable.zip`
+  y `ReproductorFLAC-windows-installer.exe` (`workflow_dispatch` o al publicar un tag `v*`).
+  Descárgalos desde la pestaña Actions del repositorio.
 
 El empaquetado incluye los assets (fuentes, iconos) y mpv, y se ejecuta sin
 consola (`--windowed`). mpv es software de terceros distribuido con su propia

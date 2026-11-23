@@ -17,9 +17,21 @@ if errorlevel 1 goto :err
 py -3 -m PyInstaller --noconfirm --clean reproductor-flac.spec
 if errorlevel 1 goto :err
 
+set "ISCC="
+if exist "%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe" set "ISCC=%ProgramFiles(x86)%\Inno Setup 6\ISCC.exe"
+if exist "%ProgramFiles%\Inno Setup 6\ISCC.exe" set "ISCC=%ProgramFiles%\Inno Setup 6\ISCC.exe"
+if defined ISCC (
+  echo Generando instalador...
+  "%ISCC%" installer_windows.iss
+  if errorlevel 1 goto :err
+  echo Instalador: dist\ReproductorFLAC-windows-installer.exe
+) else (
+  echo Inno Setup no encontrado; se omitio el instalador. Solo se genero la carpeta portable.
+)
+
 echo.
 echo Listo. Carpeta portable: dist\ReproductorFLAC
-echo Comparte la carpeta completa (incluye mpv). Comprimela en .zip para enviarla.
+echo Comparte la carpeta completa (incluye mpv) o usa el instalador si se genero.
 exit /b 0
 
 :err

@@ -27,9 +27,9 @@ jobs:
         shell: pwsh
         run: |
           $ErrorActionPreference = 'Stop'
-          $url = 'https://downloads.sourceforge.net/project/mpv-player-windows/release/mpv-0.39.0-x86_64.7z'
+          $url = 'https://sourceforge.net/projects/mpv-player-windows/files/release/mpv-0.39.0-x86_64.7z/download'
           $out = 'mpv_download.7z'
-          Invoke-WebRequest -Uri $url -OutFile $out -UseBasicParsing
+          curl.exe -L --fail --retry 3 --retry-delay 2 -o $out $url
           7z x -y $out -ompv_extract | Out-Null
           $exe = Get-ChildItem -Path mpv_extract -Recurse -Filter mpv.exe | Select-Object -First 1
           if (-not $exe) { throw 'No se encontro mpv.exe en el archivo descargado' }

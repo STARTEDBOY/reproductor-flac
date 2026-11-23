@@ -27,6 +27,10 @@ a = Analysis(
 )
 pyz = PYZ(a.pure, a.zipped_data, cipher=block_cipher)
 
+_icon = base / "assets" / "icon.ico"
+if not _icon.exists():
+    _icon = base / "assets" / "icon.png"
+
 exe = EXE(
     pyz,
     a.scripts,
@@ -43,7 +47,7 @@ exe = EXE(
     target_arch=None,
     codesign_identity=None,
     entitlements_file=None,
-    icon=str(base / "assets" / "icon.png"),
+    icon=str(_icon),
 )
 
 coll = COLLECT(

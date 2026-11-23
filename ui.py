@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import os
 import random
+import sys
 import time
 from pathlib import Path
 
@@ -333,10 +334,15 @@ class MainWindow(QMainWindow):
             str(path) for path in (stored_blacklist or []) if str(path)
         }
 
-        self.config_dir = (
-            Path(os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config"))
-            / "STARTED"
-        )
+        if sys.platform == "win32":
+            _config_base = Path(
+                os.environ.get("APPDATA", Path.home() / "AppData" / "Roaming")
+            )
+        else:
+            _config_base = Path(
+                os.environ.get("XDG_CONFIG_HOME", Path.home() / ".config")
+            )
+        self.config_dir = _config_base / "STARTED"
         self.playlists_file = self.config_dir / "playlists.json"
         self.playlists: list[dict] = []
         self.current_playlist: int | None = None
@@ -1189,7 +1195,12 @@ class MainWindow(QMainWindow):
             str(self.settings.value("library", "")),
             "/mnt/HDD/Musica",
             str(Path.home() / "Música"),
+            str(Path.home() / "Music"),
         ]
+        if sys.platform == "win32":
+            userprofile = os.environ.get("USERPROFILE")
+            if userprofile:
+                candidates.append(str(Path(userprofile) / "Music"))
         for candidate in candidates:
             if candidate and Path(candidate).is_dir():
                 self.load_library(candidate)

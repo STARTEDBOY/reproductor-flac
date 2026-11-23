@@ -11,6 +11,7 @@ import hashlib
 import json
 import os
 import re
+import sys
 import tempfile
 from dataclasses import dataclass, fields
 from pathlib import Path
@@ -25,7 +26,11 @@ SUPPORTED = {
     ".wav", ".aiff", ".aif", ".ape", ".wv",
 }
 
-CACHE_DIR = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "reproductor-flac"
+if sys.platform == "win32":
+    _cache_base = Path(os.environ.get("LOCALAPPDATA", Path.home() / "AppData" / "Local"))
+else:
+    _cache_base = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache"))
+CACHE_DIR = _cache_base / "reproductor-flac"
 LIBRARY_CACHE = CACHE_DIR / "library.json"
 CACHE_VERSION = 1
 

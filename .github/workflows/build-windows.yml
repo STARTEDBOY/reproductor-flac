@@ -60,13 +60,13 @@ jobs:
           & $iscc installer_windows.iss
 
       - name: Upload portable artifact
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: ReproductorFLAC-windows-portable
           path: ReproductorFLAC-windows-portable.zip
 
       - name: Upload installer artifact
-        uses: actions/upload-artifact@v5
+        uses: actions/upload-artifact@v7
         with:
           name: ReproductorFLAC-windows-installer
           path: dist/ReproductorFLAC-windows-installer.exe

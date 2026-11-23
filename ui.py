@@ -63,6 +63,7 @@ from dialogs import (
     PlaylistPickerDialog,
     SettingsDialog,
     SleepDialog,
+    SmartPlaylistDialog,
     TrackInfoDialog,
 )
 from i18n import DEFAULT_LANGUAGE, LANGUAGES, set_language, tr
@@ -86,6 +87,7 @@ from theme import (
     app_icon,
     build_style,
     file_icon,
+    has_cjk,
     heart_icon,
     load_fonts,
     pixel_icon,
@@ -131,6 +133,96 @@ class LyricsBox(QWidget):
     def resizeEvent(self, event) -> None:  # noqa: N802 - API de Qt
         super().resizeEvent(event)
         self.label.setGeometry(0, 0, self.width(), self.height())
+
+
+class MarqueeLabel(QLabel):
+    """Etiqueta con desplazamiento horizontal cuando el texto no cabe."""
+
+    def __init__(self, text: str = "", parent: QWidget | None = None):
+        super().__init__(text, parent)
+        self._full_text = text
+        self._offset = 0.0
+        self._gap = 80
+        self._speed = 48.0  # px/s, constante y legible
+        self._timer = QTimer(self)
+        self._timer.setInterval(16)  # ~60fps para suavidad
+        self._timer.timeout.connect(self._tick)
+        self.setWordWrap(False)
+
+    def setText(self, text: str) -> None:  # noqa: N802 - API de Qt
+        self._full_text = text or ""
+        super().setText(self._full_text)
+        self._sync_marquee(reset_offset=True)
+
+    def resizeEvent(self, event) -> None:  # noqa: N802 - API de Qt
+        super().resizeEvent(event)
+        self._sync_marquee(reset_offset=False)
+
+    def changeEvent(self, event) -> None:  # noqa: N802 - API de Qt
+        super().changeEvent(event)
+        self._sync_marquee(reset_offset=False)
+
+    def _text_width(self) -> int:
+        return self.fontMetrics().horizontalAdvance(self._full_text)
+
+    def _cycle(self) -> int:
+        return self._text_width() + self._gap
+
+    def _needs_marquee(self) -> bool:
+        return self._text_width() > max(0, self.contentsRect().width())
+
+    def _sync_marquee(self, reset_offset: bool) -> None:
+        if reset_offset:
+            self._offset = 0.0
+        cycle = self._cycle()
+        if cycle > 0:
+            self._offset %= float(cycle)
+        if self._needs_marquee() and self._full_text:
+            if not self._timer.isActive():
+                self._timer.start()
+        else:
+            self._offset = 0.0
+            self._timer.stop()
+        self.update()
+
+    def _tick(self) -> None:
+        if not self._needs_marquee() or not self._full_text:
+            self._sync_marquee(reset_offset=True)
+            return
+        cycle = float(self._cycle())
+        if cycle <= 0:
+            return
+        # Avance lineal constante; sin pausas ni easing.
+        self._offset = (self._offset + self._speed * (self._timer.interval() / 1000.0)) % cycle
+        self.update()
+
+    def paintEvent(self, _event) -> None:  # noqa: N802 - API de Qt
+        painter = QPainter(self)
+        painter.setRenderHint(QPainter.RenderHint.TextAntialiasing, True)
+        painter.setPen(self.palette().windowText().color())
+        rect = self.contentsRect()
+        text = self._full_text
+        if not text:
+            painter.end()
+            return
+        tw = self.fontMetrics().horizontalAdvance(text)
+        y = rect.y() + (
+            rect.height() + self.fontMetrics().ascent() - self.fontMetrics().descent()
+        ) // 2
+        if tw <= rect.width():
+            x = rect.x() + (rect.width() - tw) // 2
+            painter.drawText(int(x), int(y), text)
+            painter.end()
+            return
+
+        cycle = tw + self._gap
+        offset = self._offset % float(cycle)
+        x = rect.x() - int(offset)
+        # Dibuja copias para un bucle continuo sin saltos.
+        while x < rect.right() + tw:
+            painter.drawText(int(x), int(y), text)
+            x += cycle
+        painter.end()
 
 
 class ScanWorker(QThread):
@@ -232,6 +324,13 @@ class MainWindow(QMainWindow):
             stored_favorites = [stored_favorites]
         self.favorites: set[str] = {
             str(path) for path in (stored_favorites or [])
+        }
+
+        stored_blacklist = self.settings.value("blacklist", [])
+        if isinstance(stored_blacklist, str):
+            stored_blacklist = [stored_blacklist]
+        self.blacklist: set[str] = {
+            str(path) for path in (stored_blacklist or []) if str(path)
         }
 
         self.config_dir = (
@@ -632,27 +731,18 @@ class MainWindow(QMainWindow):
         self.sleep_label.setAlignment(
             Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter
         )
-        self.sleep_btn = QPushButton()
-        self.sleep_btn.setObjectName("icon")
-        self.sleep_btn.setFixedSize(38, 32)
+        self.sleep_btn = QPushButton(tr("timer"))
+        self.sleep_btn.setObjectName("small")
         self.sleep_btn.setCheckable(True)
         self.sleep_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        self.sleep_btn.setIconSize(QSize(22, 22))
-        self.sleep_btn.setIcon(file_icon("timer.png", 22))
         self.sleep_btn.setToolTip(tr("tooltip_sleep"))
-        self.settings_btn = QPushButton()
-        self.settings_btn.setObjectName("icon")
-        self.settings_btn.setFixedSize(38, 32)
+        self.settings_btn = QPushButton(tr("settings"))
+        self.settings_btn.setObjectName("small")
         self.settings_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
-        # El engranaje llena todo el lienzo, así que se dibuja algo más pequeño
-        # que los demás iconos para que no parezca más grande.
-        self.settings_btn.setIconSize(QSize(22, 22))
-        self.settings_btn.setIcon(file_icon("settings.png", 22))
         self.settings_btn.setToolTip(tr("tooltip_settings"))
         top.addWidget(self.sleep_label)
         top.addWidget(self.sleep_btn)
         top.addWidget(self.settings_btn)
-        top.addSpacing(-10)
         layout.addLayout(top)
 
         self.cover_label = QLabel()
@@ -672,45 +762,64 @@ class MainWindow(QMainWindow):
         cover_row.addStretch(1)
         layout.addSpacing(6)
         layout.addLayout(cover_row)
-        layout.addSpacing(10)
+        layout.addSpacing(22)
 
         info = QVBoxLayout()
         info.setContentsMargins(0, 0, 0, 0)
-        info.setSpacing(2)
+        info.setSpacing(0)
 
-        self.title_label = QLabel(tr("nothing_playing"))
+        self.title_label = MarqueeLabel(tr("nothing_playing"))
         self.title_label.setObjectName("title")
-        self.title_label.setWordWrap(True)
-        self.title_label.setAlignment(
-            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
-        )
+        self.title_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.title_label.setFixedHeight(44)
         info.addWidget(self.title_label)
+        info.addSpacing(0)
 
         self.artist_label = QLabel("—")
         self.artist_label.setObjectName("artist")
         self.artist_label.setWordWrap(False)
+        self.artist_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.artist_label.setFixedHeight(30)
         info.addWidget(self.artist_label)
+        info.addSpacing(2)
+
+        self.album_label = MarqueeLabel("")
+        self.album_label.setObjectName("meta")
+        self.album_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.album_label.setFixedHeight(28)
+        info.addWidget(self.album_label)
+        info.addSpacing(0)
 
         self.meta_label = QLabel("")
-        self.meta_label.setObjectName("meta")
+        self.meta_label.setObjectName("small")
         self.meta_label.setWordWrap(False)
+        self.meta_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.meta_label.setFixedHeight(24)
         info.addWidget(self.meta_label)
 
         layout.addLayout(info)
+        layout.addSpacing(8)
+
+        self.now_divider = QFrame()
+        self.now_divider.setObjectName("divider")
+        self.now_divider.setFrameShape(QFrame.Shape.HLine)
+        self.now_divider.setFixedHeight(2)
+        self.now_divider.setVisible(False)
+        layout.addWidget(self.now_divider)
         layout.addSpacing(6)
 
         self.lyrics_label = QLabel("")
         self.lyrics_label.setObjectName("lyrics")
         self.lyrics_label.setWordWrap(True)
         self.lyrics_label.setAlignment(
-            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignTop
+            Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignTop
         )
         self._lyrics_opacity = QGraphicsOpacityEffect(self.lyrics_label)
         self._lyrics_opacity.setOpacity(1.0)
         self._lyrics_opacity.setEnabled(False)
         self.lyrics_label.setGraphicsEffect(self._lyrics_opacity)
         self.lyrics_box = LyricsBox(self.lyrics_label)
-        self.lyrics_box.setFixedHeight(96)
+        self.lyrics_box.setFixedHeight(72)
         self.lyrics_box.setVisible(False)
         layout.addWidget(self.lyrics_box)
 
@@ -819,43 +928,35 @@ class MainWindow(QMainWindow):
         return width if width > 120 else 392
 
     def _set_title_text(self, text: str) -> None:
-        """Coloca el título en una o dos líneas, sin huecos ni recortes."""
-        font = text_font(text, 30, bold=True)
-        metrics = QFontMetrics(font)
-        width = self._player_text_width()
-
-        def line_count(value: str) -> int:
-            rect = metrics.boundingRect(
-                QRect(0, 0, width, 10000),
-                int(Qt.TextFlag.TextWordWrap),
-                value,
-            )
-            spacing = max(1, metrics.lineSpacing())
-            return max(1, (rect.height() + spacing - 1) // spacing)
-
-        shown = text
-        if line_count(shown) > 2:
-            # Recorta con puntos suspensivos si no cabe en dos líneas.
-            low, high = 0, len(shown)
-            while low < high:
-                middle = (low + high + 1) // 2
-                candidate = shown[:middle].rstrip() + "…"
-                if line_count(candidate) <= 2:
-                    low = middle
-                else:
-                    high = middle - 1
-            shown = shown[:low].rstrip() + "…"
-
-        self.title_label.setText(shown)
-        self.title_label.setStyleSheet(text_style(text, 30, bold=True))
+        """Muestra el título en una línea; si desborda, activa marquee."""
+        size = 38
+        font = text_font(text, size, bold=True)
+        self.title_label.setFont(font)
+        self.title_label.setStyleSheet(text_style(text, size, bold=True))
+        self.title_label.setText(text)
         self.title_label.setToolTip(text)
-        self.title_label.setFixedHeight(
-            line_count(shown) * max(1, metrics.lineSpacing()) + 2
-        )
+        self.title_label.setFixedHeight(44)
 
-    def _set_line_text(self, label: QLabel, text: str, size: int) -> None:
-        """Pone artista o álbum en una línea, recortando si no cabe."""
-        label.setStyleSheet(text_style(text, size))
+    def _set_line_text(
+        self, label: QLabel, text: str, size: int, color: str | None = None
+    ) -> None:
+        """Pone artista, álbum o metadatos en una línea."""
+        if isinstance(label, MarqueeLabel):
+            font = text_font(text, size)
+            label.setFont(font)
+            label.setStyleSheet(text_style(text, size, color=color))
+            label.setText(text)
+            label.setToolTip(text)
+            return
+
+        is_cjk = has_cjk(text)
+        label.setContentsMargins(0, 0, 0, 0)
+        label.setAlignment(
+            Qt.AlignmentFlag.AlignHCenter | Qt.AlignmentFlag.AlignBottom
+            if is_cjk
+            else Qt.AlignmentFlag.AlignCenter
+        )
+        label.setStyleSheet(text_style(text, size, color=color))
         metrics = QFontMetrics(text_font(text, size))
         label.setText(
             metrics.elidedText(
@@ -879,8 +980,6 @@ class MainWindow(QMainWindow):
     def _refresh_icons(self) -> None:
         """Regenera los iconos con los colores del fondo actual."""
         self.side_btn.setIcon(pixel_icon(PIXEL_SWAP))
-        self.sleep_btn.setIcon(file_icon("timer.png", 22))
-        self.settings_btn.setIcon(file_icon("settings.png", 22))
         self.shuffle_btn.setIcon(file_icon("shuffle.png"))
         self._update_repeat_button()
         self._refresh_favorite_icons()
@@ -941,7 +1040,9 @@ class MainWindow(QMainWindow):
         self.side_btn.setToolTip(self._side_tooltip())
 
         self.now_label.setText(tr("now_playing"))
+        self.sleep_btn.setText(tr("timer"))
         self.sleep_btn.setToolTip(tr("tooltip_sleep"))
+        self.settings_btn.setText(tr("settings"))
         self.settings_btn.setToolTip(tr("tooltip_settings"))
         self.progress.setToolTip(tr("tooltip_progress"))
         self.shuffle_btn.setToolTip(tr("tooltip_shuffle"))
@@ -953,15 +1054,18 @@ class MainWindow(QMainWindow):
         if self.current is None:
             self._set_title_text(tr("nothing_playing"))
             self.title_label.setToolTip("")
+            self._set_line_text(self.artist_label, "—", 26, color="#5DA9E9")
+            self._set_line_text(self.album_label, "", 18)
+            self._set_line_text(self.meta_label, "", 14)
         else:
             self._set_title_text(self.current.title)
             self._set_line_text(
-                self.artist_label, self.current.display_artist, 21
+                self.artist_label, self.current.display_artist, 26, color="#5DA9E9"
             )
-            album = self.current.display_album
+            album_name = self.current.display_album
             quality = self.current.quality
-            meta_text = f"{album} · {quality}" if quality else album
-            self._set_line_text(self.meta_label, meta_text, 16)
+            self._set_line_text(self.album_label, album_name, 18)
+            self._set_line_text(self.meta_label, quality, 14)
         self._refresh_play_text()
         self._refresh_state_text()
         self._update_sleep_label()
@@ -1018,9 +1122,7 @@ class MainWindow(QMainWindow):
         self.history_combo.currentIndexChanged.connect(
             self._history_view_changed
         )
-        self.new_playlist_btn.clicked.connect(
-            lambda _checked=False: self._new_playlist()
-        )
+        self.new_playlist_btn.clicked.connect(self._new_playlist_menu)
         self.delete_playlist_btn.clicked.connect(self._delete_playlist)
         self.add_songs_btn.clicked.connect(self._add_songs_to_playlist)
         self.remove_song_btn.clicked.connect(self._remove_from_playlist)
@@ -1310,6 +1412,7 @@ class MainWindow(QMainWindow):
             base = self._history_tracks()
         else:
             base = self.tracks
+        base = [track for track in base if track.path not in self.blacklist]
 
         artist = self.artist_combo.currentData() or ""
         album = self.album_combo.currentData() or ""
@@ -1363,12 +1466,62 @@ class MainWindow(QMainWindow):
             or not (0 <= self.current_playlist < len(self.playlists))
         ):
             return []
+        playlist = self.playlists[self.current_playlist]
+        if playlist.get("type") == "smart":
+            return self._smart_playlist_tracks(playlist)
         tracks: list[Track] = []
-        for path in self.playlists[self.current_playlist]["paths"]:
+        for path in playlist.get("paths", []):
             track = self.track_by_path.get(path)
             if track is not None:
                 tracks.append(track)
         return tracks
+
+    def _smart_playlist_tracks(self, playlist: dict) -> list[Track]:
+        smart_type = str(playlist.get("smart_type", "") or "")
+        params = playlist.get("params", {})
+        if not isinstance(params, dict):
+            params = {}
+
+        tracks = list(self.tracks)
+        if smart_type == "most_played":
+            tracks = [t for t in tracks if self.history_counts.get(t.path, 0) > 0]
+            tracks.sort(
+                key=lambda t: (
+                    -self.history_counts.get(t.path, 0),
+                    -self.history_last.get(t.path, 0.0),
+                )
+            )
+            return tracks
+        if smart_type == "recently_played":
+            tracks = [t for t in tracks if t.path in self.history_last]
+            tracks.sort(
+                key=lambda t: -self.history_last.get(t.path, 0.0)
+            )
+            return tracks
+        if smart_type == "never_played":
+            return [t for t in tracks if self.history_counts.get(t.path, 0) == 0]
+        if smart_type == "favorites":
+            return [t for t in tracks if t.path in self.favorites]
+        if smart_type == "by_genre":
+            value = str(params.get("genre", "")).casefold().strip()
+            if not value:
+                return []
+            return [t for t in tracks if value in t.genre.casefold()]
+        if smart_type == "by_artist":
+            value = str(params.get("artist", "")).casefold().strip()
+            if not value:
+                return []
+            return [
+                t
+                for t in tracks
+                if value in t.display_artist.casefold()
+            ]
+        if smart_type == "by_year":
+            value = str(params.get("year", "")).strip()
+            if not value:
+                return []
+            return [t for t in tracks if str(t.year).strip() == value]
+        return []
 
     def _fill_table(self) -> None:
         self.table.setUpdatesEnabled(False)
@@ -1472,11 +1625,9 @@ class MainWindow(QMainWindow):
         self.time_total.setText(format_time(track.duration))
 
         self._set_title_text(track.title)
-        self._set_line_text(self.artist_label, track.display_artist, 21)
-        album = track.display_album
-        quality = track.quality
-        meta_text = f"{album} · {quality}" if quality else album
-        self._set_line_text(self.meta_label, meta_text, 16)
+        self._set_line_text(self.artist_label, track.display_artist, 26, color="#5DA9E9")
+        self._set_line_text(self.album_label, track.display_album, 18)
+        self._set_line_text(self.meta_label, track.quality, 14)
         self._load_lyrics(track)
         self._update_cover(track)
 
@@ -1576,7 +1727,9 @@ class MainWindow(QMainWindow):
             self.lyrics = []
         self.lyric_index = -1
         self.lyrics_label.setText("")
-        self.lyrics_box.setVisible(bool(self.lyrics))
+        self.lyrics_box.setVisible(True)
+        if hasattr(self, "now_divider"):
+            self.now_divider.setVisible(True)
         self._update_lyrics(self.position)
 
     def _update_lyrics(self, position: float) -> None:
@@ -1585,10 +1738,14 @@ class MainWindow(QMainWindow):
             self._stop_lyrics_animation()
             if self.lyrics_label.text():
                 self.lyrics_label.setText("")
-            self.lyrics_box.setVisible(False)
+            self.lyrics_box.setVisible(True)
+            if hasattr(self, "now_divider"):
+                self.now_divider.setVisible(True)
             return
         if not self.lyrics_box.isVisible():
             self.lyrics_box.setVisible(True)
+        if hasattr(self, "now_divider"):
+            self.now_divider.setVisible(True)
 
         index = -1
         for position_index, (stamp, _line) in enumerate(self.lyrics):
@@ -1608,7 +1765,7 @@ class MainWindow(QMainWindow):
         text = self.lyrics[index][1]
         if index + 1 < len(self.lyrics):
             text = f"{text}\n{self.lyrics[index + 1][1]}"
-        self.lyrics_label.setStyleSheet(text_style(text, 18))
+        self.lyrics_label.setStyleSheet(text_style(text, 22))
         self._animate_lyrics(text)
 
     def _animate_lyrics(self, text: str) -> None:
@@ -1679,6 +1836,8 @@ class MainWindow(QMainWindow):
         self.lyric_index = -1
         self.lyrics_label.setText("")
         self.lyrics_box.setVisible(False)
+        if hasattr(self, "now_divider"):
+            self.now_divider.setVisible(False)
 
     def _on_position(self, position: float) -> None:
         self.position = position
@@ -1797,6 +1956,11 @@ class MainWindow(QMainWindow):
         if self.mode == "favorites":
             self._apply_filters()
             return
+        if self.mode == "playlist" and self.current_playlist is not None:
+            pl = self.playlists[self.current_playlist]
+            if pl.get("type") == "smart":
+                self._apply_filters()
+                return
         for row, visible_track in enumerate(self.visible):
             if visible_track.path == track.path:
                 item = self.table.item(row, 0)
@@ -1816,6 +1980,33 @@ class MainWindow(QMainWindow):
         track = self._selected_track() or self.current
         if track is not None:
             self._toggle_favorite(track)
+
+    def _add_to_blacklist(self, track: Track) -> None:
+        self.blacklist.add(track.path)
+        self.settings.setValue("blacklist", sorted(self.blacklist))
+        was_current = self.current is not None and self.current.path == track.path
+        self._apply_filters()
+        if was_current:
+            if self.visible:
+                self._play_track(self.visible[0])
+            else:
+                self.current = None
+                self.mpv.stop()
+                self._clear_lyrics()
+                self.now_divider.setVisible(False)
+                self._set_title_text(tr("nothing_playing"))
+                self._set_line_text(self.artist_label, "—", 26, color="#5DA9E9")
+                self._set_line_text(self.album_label, "", 18)
+                self._set_line_text(self.meta_label, "", 14)
+                self.cover_label.setPixmap(self._placeholder())
+                self.progress.blockSignals(True)
+                self.progress.setValue(0)
+                self.progress.blockSignals(False)
+                self.progress.setEnabled(False)
+                self.time_current.setText("0:00")
+                self.time_total.setText("0:00")
+                self._set_play_text("play")
+                self._set_state("nothing_playing")
 
     # -------------------------------------------------------------- historial
     def _load_history(self) -> None:
@@ -1895,6 +2086,10 @@ class MainWindow(QMainWindow):
         self._save_history()
         if self.mode == "history":
             self._apply_filters()
+        elif self.mode == "playlist" and self.current_playlist is not None:
+            pl = self.playlists[self.current_playlist]
+            if pl.get("type") == "smart":
+                self._apply_filters()
 
     def _history_tracks(self) -> list[Track]:
         if self._history_view == "most":
@@ -1955,15 +2150,33 @@ class MainWindow(QMainWindow):
             if not isinstance(item, dict):
                 continue
             name = str(item.get("name", "")).strip()
+            if not name:
+                continue
+            ptype = str(item.get("type", "manual") or "manual")
+            if ptype == "smart":
+                smart_type = str(item.get("smart_type", "") or "")
+                params = item.get("params", {})
+                if not isinstance(params, dict):
+                    params = {}
+                if smart_type:
+                    self.playlists.append(
+                        {
+                            "name": name,
+                            "type": "smart",
+                            "smart_type": smart_type,
+                            "params": params,
+                        }
+                    )
+                continue
             paths = item.get("paths", [])
-            if not name or not isinstance(paths, list):
+            if not isinstance(paths, list):
                 continue
             cleaned: list[str] = []
             for path in paths:
                 text = str(path)
                 if text and text not in cleaned:
                     cleaned.append(text)
-            self.playlists.append({"name": name, "paths": cleaned})
+            self.playlists.append({"name": name, "type": "manual", "paths": cleaned})
 
     def _save_playlists(self) -> None:
         try:
@@ -2020,11 +2233,17 @@ class MainWindow(QMainWindow):
         self._fit_combo_font(self.playlist_combo)
 
         has_playlist = bool(self.playlists)
+        is_smart = False
+        if (
+            self.current_playlist is not None
+            and 0 <= self.current_playlist < len(self.playlists)
+        ):
+            is_smart = self.playlists[self.current_playlist].get("type") == "smart"
         self.playlist_combo.setEnabled(has_playlist)
-        self.add_songs_btn.setEnabled(has_playlist)
-        self.remove_song_btn.setEnabled(has_playlist)
-        self.up_song_btn.setEnabled(has_playlist)
-        self.down_song_btn.setEnabled(has_playlist)
+        self.add_songs_btn.setEnabled(has_playlist and not is_smart)
+        self.remove_song_btn.setEnabled(has_playlist and not is_smart)
+        self.up_song_btn.setEnabled(has_playlist and not is_smart)
+        self.down_song_btn.setEnabled(has_playlist and not is_smart)
         self.delete_playlist_btn.setEnabled(has_playlist)
 
     def _playlist_changed(self, index: int) -> None:
@@ -2033,6 +2252,41 @@ class MainWindow(QMainWindow):
         else:
             self.current_playlist = None
         self._apply_filters()
+
+    def _new_playlist_menu(self) -> None:
+        menu = QMenu(self)
+        manual = menu.addAction(tr("manual_playlist"))
+        smart = menu.addAction(tr("smart_playlist"))
+        action = menu.exec(self.new_playlist_btn.mapToGlobal(self.new_playlist_btn.rect().bottomLeft()))
+        if action == manual:
+            self._new_playlist()
+        elif action == smart:
+            self._new_smart_playlist()
+
+    def _new_smart_playlist(self) -> bool:
+        genres = sorted({t.genre.strip() for t in self.tracks if t.genre.strip()}, key=str.casefold)
+        artists = sorted({t.display_artist for t in self.tracks if t.display_artist}, key=str.casefold)
+        years = sorted({str(t.year).strip() for t in self.tracks if str(t.year).strip()}, key=str.casefold)
+        dialog = SmartPlaylistDialog(genres, artists, years, self)
+        dialog.setStyleSheet(self.styleSheet())
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return False
+        name = dialog.result_name
+        if any(p["name"].casefold() == name.casefold() for p in self.playlists):
+            self._set_state("playlist_exists")
+            return False
+        self.playlists.append(
+            {
+                "name": name,
+                "type": "smart",
+                "smart_type": dialog.result_type,
+                "params": dialog.result_params,
+            }
+        )
+        self.current_playlist = len(self.playlists) - 1
+        self._save_playlists()
+        self._set_mode("playlist")
+        return True
 
     def _new_playlist(self, add_track: Track | None = None) -> bool:
         dialog = NameDialog(
@@ -2052,7 +2306,7 @@ class MainWindow(QMainWindow):
             self._set_state("playlist_exists")
             return False
         paths = [add_track.path] if add_track is not None else []
-        self.playlists.append({"name": name, "paths": paths})
+        self.playlists.append({"name": name, "type": "manual", "paths": paths})
         self.current_playlist = len(self.playlists) - 1
         self._save_playlists()
         self._set_mode("playlist")
@@ -2086,10 +2340,12 @@ class MainWindow(QMainWindow):
         ):
             if not self._new_playlist():
                 return
+        playlist = self.playlists[self.current_playlist]
+        if playlist.get("type") == "smart":
+            return
         if not self.tracks:
             self._set_state("library_empty")
             return
-        playlist = self.playlists[self.current_playlist]
         dialog = PlaylistPickerDialog(self.tracks, playlist["name"], self)
         dialog.setStyleSheet(self.styleSheet())
         if dialog.exec() != QDialog.DialogCode.Accepted:
@@ -2113,6 +2369,8 @@ class MainWindow(QMainWindow):
         if not (0 <= index < len(self.playlists)):
             return
         playlist = self.playlists[index]
+        if playlist.get("type") == "smart":
+            return
         if track.path in playlist["paths"]:
             self._set_state("already_in_playlist_one")
             return
@@ -2129,11 +2387,13 @@ class MainWindow(QMainWindow):
             or not (0 <= self.current_playlist < len(self.playlists))
         ):
             return
+        playlist = self.playlists[self.current_playlist]
+        if playlist.get("type") == "smart":
+            return
         row = self.table.currentRow()
         if not (0 <= row < len(self.visible)):
             return
         path = self.visible[row].path
-        playlist = self.playlists[self.current_playlist]
         if path not in playlist["paths"]:
             return
         playlist["paths"].remove(path)
@@ -2148,11 +2408,14 @@ class MainWindow(QMainWindow):
             or not (0 <= self.current_playlist < len(self.playlists))
         ):
             return
+        playlist = self.playlists[self.current_playlist]
+        if playlist.get("type") == "smart":
+            return
         row = self.table.currentRow()
         if not (0 <= row < len(self.visible)):
             return
         track = self.visible[row]
-        paths = self.playlists[self.current_playlist]["paths"]
+        paths = playlist["paths"]
         try:
             index = paths.index(track.path)
         except ValueError:
@@ -2193,8 +2456,11 @@ class MainWindow(QMainWindow):
         )
 
         add_menu = menu.addMenu(tr("add_to_playlist"))
-        if self.playlists:
-            for playlist_index, playlist in enumerate(self.playlists):
+        manual_playlists = [
+            (i, p) for i, p in enumerate(self.playlists) if p.get("type") != "smart"
+        ]
+        if manual_playlists:
+            for playlist_index, playlist in manual_playlists:
                 action = add_menu.addAction(playlist["name"])
                 action.triggered.connect(
                     lambda _checked=False, i=playlist_index, t=track: self._add_track_to_playlist(
@@ -2211,19 +2477,27 @@ class MainWindow(QMainWindow):
         )
 
         if self.mode == "playlist" and self.current_playlist is not None:
-            menu.addSeparator()
-            remove_action = menu.addAction(tr("remove_from_playlist"))
-            remove_action.triggered.connect(
-                lambda _checked=False: self._remove_from_playlist()
-            )
-            up_action = menu.addAction(tr("move_up"))
-            up_action.triggered.connect(
-                lambda _checked=False: self._move_playlist_track(-1)
-            )
-            down_action = menu.addAction(tr("move_down"))
-            down_action.triggered.connect(
-                lambda _checked=False: self._move_playlist_track(1)
-            )
+            playlist = self.playlists[self.current_playlist]
+            if playlist.get("type") != "smart":
+                menu.addSeparator()
+                remove_action = menu.addAction(tr("remove_from_playlist"))
+                remove_action.triggered.connect(
+                    lambda _checked=False: self._remove_from_playlist()
+                )
+                up_action = menu.addAction(tr("move_up"))
+                up_action.triggered.connect(
+                    lambda _checked=False: self._move_playlist_track(-1)
+                )
+                down_action = menu.addAction(tr("move_down"))
+                down_action.triggered.connect(
+                    lambda _checked=False: self._move_playlist_track(1)
+                )
+
+        menu.addSeparator()
+        blacklist_action = menu.addAction(tr("add_to_blacklist"))
+        blacklist_action.triggered.connect(
+            lambda _checked=False, t=track: self._add_to_blacklist(t)
+        )
 
         menu.addSeparator()
         info_action = menu.addAction(tr("view_info"))
@@ -2314,8 +2588,9 @@ class MainWindow(QMainWindow):
         self.time_total.setText("0:00")
         self._set_title_text(tr("nothing_playing"))
         self.title_label.setToolTip("")
-        self._set_line_text(self.artist_label, "—", 21)
-        self._set_line_text(self.meta_label, "", 16)
+        self._set_line_text(self.artist_label, "—", 26, color="#5DA9E9")
+        self._set_line_text(self.album_label, "", 18)
+        self._set_line_text(self.meta_label, "", 14)
         self._clear_lyrics()
         self.cover_label.setPixmap(self._placeholder())
         if self.bg_mode == "cover":
@@ -2356,6 +2631,7 @@ class MainWindow(QMainWindow):
             self.spectrum_enabled,
             SPECTRUM_AVAILABLE,
             self.crt_mode,
+            sorted(self.blacklist),
             self,
         )
         dialog.setStyleSheet(self.styleSheet())
@@ -2398,6 +2674,12 @@ class MainWindow(QMainWindow):
 
         if dialog.crt_mode != self.crt_mode:
             self._set_crt_mode(dialog.crt_mode)
+
+        new_blacklist = set(dialog.blacklist)
+        if new_blacklist != self.blacklist:
+            self.blacklist = new_blacklist
+            self.settings.setValue("blacklist", sorted(self.blacklist))
+            self._apply_filters()
 
     # ---------------------------------------------------------- temporizador
     def _open_sleep_dialog(self) -> None:

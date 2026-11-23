@@ -60,13 +60,19 @@ QLabel#small {
     color: %(muted)s;
 }
 QLabel#muted { color: %(muted)s; }
-QLabel#title { font-size: 30px; font-weight: bold; color: %(text)s; }
-QLabel#artist { font-size: 21px; color: %(text)s; }
+QLabel#title { font-size: 38px; font-weight: bold; color: %(text)s; }
+QLabel#artist { font-size: 24px; color: #5DA9E9; }
 QLabel#meta { font-size: 16px; color: %(muted)s; }
 QLabel#lyrics {
-    font-size: 18px;
+    font-size: 22px;
     color: %(text)s;
-    padding-top: 4px;
+    padding-top: 8px;
+}
+QFrame#divider {
+    background-color: #5DA9E9;
+    border: none;
+    min-height: 2px;
+    max-height: 2px;
 }
 QLabel#state {
     font-family: 'Press Start 2P';
@@ -172,6 +178,11 @@ QPushButton#small {
 }
 QPushButton#icon {
     padding: 0;
+}
+QPushButton#compact {
+    font-family: 'Press Start 2P';
+    font-size: 7px;
+    padding: 4px 6px;
 }
 QPushButton#transport { font-size: 22px; padding: 4px 8px; }
 QPushButton#play {
@@ -378,7 +389,9 @@ def text_font(text: str, pixel_size: int, bold: bool = False) -> QFont:
     return font
 
 
-def text_style(text: str, pixel_size: int, bold: bool = False) -> str:
+def text_style(
+    text: str, pixel_size: int, bold: bool = False, color: str | None = None
+) -> str:
     """Regla de estilo con la fuente y el tamaño adecuados al texto.
 
     Las etiquetas con hoja de estilos vuelven a imponer su fuente, así que
@@ -388,11 +401,14 @@ def text_style(text: str, pixel_size: int, bold: bool = False) -> str:
     families = font.families()
     family = families[0] if families else "VT323"
     weight = "bold" if bold else "normal"
-    return (
+    style = (
         f"font-family: '{family}'; "
         f"font-size: {font.pixelSize()}px; "
         f"font-weight: {weight};"
     )
+    if color:
+        style += f" color: {color};"
+    return style
 
 
 APP_ICON_NAME = "reproductor-flac"

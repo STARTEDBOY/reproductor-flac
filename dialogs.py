@@ -19,6 +19,8 @@ from PySide6.QtWidgets import (
     QHeaderView,
     QLabel,
     QLineEdit,
+    QListWidget,
+    QListWidgetItem,
     QPushButton,
     QSizePolicy,
     QSpinBox,
@@ -430,6 +432,7 @@ class SettingsDialog(QDialog):
         spectrum_enabled: bool = True,
         spectrum_available: bool = True,
         crt_mode: str = "off",
+        blacklist: list[str] | None = None,
         parent: QWidget | None = None,
     ):
         super().__init__(parent)
@@ -441,6 +444,7 @@ class SettingsDialog(QDialog):
         self.lyrics_effect = lyrics_effect
         self.spectrum_enabled = spectrum_enabled and spectrum_available
         self.crt_mode = crt_mode if crt_mode in CRT_MODES else "off"
+        self.blacklist = list(blacklist or [])
         self.setWindowTitle(tr("settings_title"))
         self.setModal(True)
         self.setMinimumWidth(560)
@@ -532,6 +536,19 @@ class SettingsDialog(QDialog):
         self.hide_check.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         layout.addWidget(self.hide_check)
 
+        blacklist_row = QHBoxLayout()
+        blacklist_row.setSpacing(8)
+        blacklist_label = QLabel(tr("blacklist"))
+        blacklist_label.setObjectName("small")
+        self.blacklist_btn = QPushButton(tr("manage_blacklist"))
+        self.blacklist_btn.setObjectName("small")
+        self.blacklist_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.blacklist_btn.clicked.connect(self._manage_blacklist)
+        blacklist_row.addWidget(blacklist_label)
+        blacklist_row.addStretch(1)
+        blacklist_row.addWidget(self.blacklist_btn)
+        layout.addLayout(blacklist_row)
+
         row = QHBoxLayout()
         row.setSpacing(8)
         cancel = QPushButton(tr("cancel"))
@@ -547,6 +564,56 @@ class SettingsDialog(QDialog):
 
         cancel.clicked.connect(self.reject)
         apply_btn.clicked.connect(self._accept)
+
+    def _manage_blacklist(self) -> None:
+        dialog = QDialog(self)
+        dialog.setWindowTitle(tr("blacklist_title"))
+        dialog.setModal(True)
+        dialog.setMinimumWidth(560)
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(10)
+
+        list_widget = QListWidget()
+        list_widget.setSelectionMode(QAbstractItemView.SelectionMode.SingleSelection)
+        for path in sorted(self.blacklist):
+            QListWidgetItem(path, list_widget)
+        layout.addWidget(list_widget)
+
+        info = QLabel(tr("blacklist_empty"))
+        info.setObjectName("muted")
+        info.setVisible(list_widget.count() == 0)
+        layout.addWidget(info)
+
+        row = QHBoxLayout()
+        row.setSpacing(8)
+        remove_btn = QPushButton(tr("remove_selected"))
+        remove_btn.setObjectName("small")
+        remove_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        close_btn = QPushButton(tr("close"))
+        close_btn.setObjectName("small")
+        close_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        row.addWidget(remove_btn)
+        row.addStretch(1)
+        row.addWidget(close_btn)
+        layout.addLayout(row)
+
+        def refresh_empty() -> None:
+            info.setVisible(list_widget.count() == 0)
+
+        def remove_selected() -> None:
+            item = list_widget.currentItem()
+            if item is None:
+                return
+            path = item.text()
+            if path in self.blacklist:
+                self.blacklist.remove(path)
+            list_widget.takeItem(list_widget.row(item))
+            refresh_empty()
+
+        remove_btn.clicked.connect(remove_selected)
+        close_btn.clicked.connect(dialog.accept)
+        dialog.exec()
 
     def _accept(self) -> None:
         if not self.picker.validate():
@@ -942,3 +1009,130 @@ class TrackInfoDialog(QDialog):
                 value.setContentsMargins(0, -diff, 0, 0)
 
         self.layout().activate()
+
+
+class SmartPlaylistDialog(QDialog):
+    """Crea una lista inteligente basada en una regla."""
+
+    TYPES = (
+        ("most_played", "smart_most_played", False),
+        ("recently_played", "smart_recently_played", False),
+        ("never_played", "smart_never_played", False),
+        ("favorites", "smart_favorites", False),
+        ("by_genre", "smart_by_genre", True),
+        ("by_artist", "smart_by_artist", True),
+        ("by_year", "smart_by_year", True),
+    )
+
+    def __init__(self, genres: list[str], artists: list[str], years: list[str], parent: QWidget | None = None):
+        super().__init__(parent)
+        self.result_name = ""
+        self.result_type = "most_played"
+        self.result_params: dict = {}
+        self._genres = genres
+        self._artists = artists
+        self._years = years
+
+        self.setWindowTitle(tr("new_smart_playlist_title"))
+        self.setModal(True)
+        self.setMinimumWidth(460)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 16)
+        layout.setSpacing(10)
+
+        heading = QLabel(tr("new_smart_playlist_title").upper())
+        heading.setObjectName("section")
+        heading.setWordWrap(True)
+        layout.addWidget(heading)
+
+        name_label = QLabel(tr("playlist_name_label"))
+        name_label.setObjectName("small")
+        layout.addWidget(name_label)
+        self.name_edit = QLineEdit()
+        layout.addWidget(self.name_edit)
+
+        type_label = QLabel(tr("smart_type_label"))
+        type_label.setObjectName("small")
+        layout.addWidget(type_label)
+        self.type_combo = QComboBox()
+        for key, label_key, _needs in self.TYPES:
+            self.type_combo.addItem(tr(label_key), key)
+        _fit_combo(self.type_combo)
+        layout.addWidget(self.type_combo)
+
+        self.value_label = QLabel(tr("smart_value_label"))
+        self.value_label.setObjectName("small")
+        layout.addWidget(self.value_label)
+        self.value_combo = QComboBox()
+        self.value_combo.setEditable(True)
+        layout.addWidget(self.value_combo)
+
+        self.error = QLabel("")
+        self.error.setObjectName("muted")
+        layout.addWidget(self.error)
+
+        row = QHBoxLayout()
+        row.setSpacing(8)
+        cancel = QPushButton(tr("cancel"))
+        cancel.setObjectName("small")
+        cancel.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        accept = QPushButton(tr("save"))
+        accept.setObjectName("small")
+        accept.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        row.addStretch(1)
+        row.addWidget(cancel)
+        row.addWidget(accept)
+        layout.addLayout(row)
+
+        self.type_combo.currentIndexChanged.connect(self._type_changed)
+        cancel.clicked.connect(self.reject)
+        accept.clicked.connect(self._accept)
+        self.name_edit.returnPressed.connect(self._accept)
+
+        self._type_changed(0)
+
+    def _type_changed(self, _index: int) -> None:
+        key = str(self.type_combo.currentData() or "most_played")
+        needs = any(k == key and n for k, _l, n in self.TYPES)
+        self.value_label.setVisible(needs)
+        self.value_combo.setVisible(needs)
+        self.value_combo.clear()
+        if key == "by_genre":
+            self.value_label.setText(tr("smart_value_genre"))
+            self.value_combo.addItems(self._genres)
+        elif key == "by_artist":
+            self.value_label.setText(tr("smart_value_artist"))
+            self.value_combo.addItems(self._artists)
+        elif key == "by_year":
+            self.value_label.setText(tr("smart_value_year"))
+            self.value_combo.addItems(self._years)
+        else:
+            self.value_label.setText(tr("smart_value_label"))
+        _fit_combo(self.value_combo)
+        if not self.name_edit.text().strip():
+            self.name_edit.setText(self.type_combo.currentText())
+
+    def _accept(self) -> None:
+        name = self.name_edit.text().strip()
+        if not name:
+            self.error.setText(tr("name_required"))
+            return
+        key = str(self.type_combo.currentData() or "most_played")
+        params: dict = {}
+        needs = any(k == key and n for k, _l, n in self.TYPES)
+        if needs:
+            value = self.value_combo.currentText().strip()
+            if not value:
+                self.error.setText(tr("name_required"))
+                return
+            if key == "by_genre":
+                params["genre"] = value
+            elif key == "by_artist":
+                params["artist"] = value
+            elif key == "by_year":
+                params["year"] = value
+        self.result_name = name
+        self.result_type = key
+        self.result_params = params
+        self.accept()

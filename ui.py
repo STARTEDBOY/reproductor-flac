@@ -50,6 +50,7 @@ from PySide6.QtWidgets import (
     QPushButton,
     QSizePolicy,
     QSlider,
+    QSpinBox,
     QTableWidget,
     QTableWidgetItem,
     QVBoxLayout,
@@ -439,6 +440,10 @@ class MainWindow(QMainWindow):
             self.lyrics_effect_name = "fade"
         self.crossfade_seconds = int(self.settings.value("crossfade_seconds", 0) or 0)
         self.crossfade_seconds = max(0, min(12, self.crossfade_seconds))
+        self._last_crossfade_seconds = int(
+            self.settings.value("last_crossfade_seconds", 3) or 3
+        )
+        self._last_crossfade_seconds = max(1, min(12, self._last_crossfade_seconds))
         self._fade_timer = QTimer(self)
         self._fade_timer.setInterval(40)
         self._fade_timer.timeout.connect(self._fade_tick)
@@ -1059,11 +1064,18 @@ class MainWindow(QMainWindow):
         )
         self.repeat_btn.setIcon(repeat_icon(False))
         self.repeat_btn.setToolTip(tr("tooltip_repeat_off"))
+        self.crossfade_btn = QPushButton("CF")
+        self.crossfade_btn.setObjectName("icon")
+        self.crossfade_btn.setFixedSize(38, 38)
+        self.crossfade_btn.setCheckable(True)
+        self.crossfade_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.crossfade_btn.setToolTip(tr("crossfade"))
         controls.addWidget(self.shuffle_btn)
         controls.addWidget(self.prev_btn)
         controls.addWidget(self.play_btn, 1)
         controls.addWidget(self.next_btn)
         controls.addWidget(self.repeat_btn)
+        controls.addWidget(self.crossfade_btn)
         layout.addLayout(controls)
 
         layout.addSpacing(6)
@@ -1250,6 +1262,7 @@ class MainWindow(QMainWindow):
         self._refresh_play_text()
         self._refresh_state_text()
         self._update_sleep_label()
+        self._update_crossfade_button()
         if self.mini_player is not None:
             self.mini_player.retranslate()
         if self.current_cover is None:
@@ -1282,6 +1295,7 @@ class MainWindow(QMainWindow):
         self.next_btn.clicked.connect(self.next_track)
         self.shuffle_btn.clicked.connect(self._toggle_shuffle)
         self.repeat_btn.clicked.connect(self._cycle_repeat)
+        self.crossfade_btn.clicked.connect(self._toggle_crossfade)
 
         self.progress.scrubbed.connect(self._seek_scrub)
         self.progress.seekRequested.connect(self._seek_to)
@@ -1355,6 +1369,7 @@ class MainWindow(QMainWindow):
         self.shuffle_btn.setChecked(self.shuffle)
         self.repeat_btn.setChecked(self.repeat != "off")
         self._update_repeat_button()
+        self._update_crossfade_button()
 
         volume = max(0, min(100, int(self.settings.value("volume", 70) or 70)))
         self._user_volume = volume
@@ -2273,6 +2288,68 @@ class MainWindow(QMainWindow):
         }[self.repeat]
         self.repeat_btn.setToolTip(tr(key))
 
+    def _toggle_crossfade(self) -> None:
+        if self.crossfade_seconds > 0:
+            self._last_crossfade_seconds = max(1, min(12, self.crossfade_seconds))
+            self.crossfade_seconds = 0
+            self._cancel_fade(restore_volume=True)
+            self._crossfade_handled_end = False
+        else:
+            seconds = self._ask_crossfade_seconds()
+            if seconds is None:
+                self.crossfade_btn.setChecked(False)
+                return
+            self.crossfade_seconds = seconds
+            self._last_crossfade_seconds = seconds
+        self.settings.setValue("crossfade_seconds", self.crossfade_seconds)
+        self.settings.setValue("last_crossfade_seconds", self._last_crossfade_seconds)
+        self._update_crossfade_button()
+
+    def _ask_crossfade_seconds(self) -> int | None:
+        dialog = QDialog(self)
+        dialog.setWindowTitle(tr("crossfade"))
+        dialog.setModal(True)
+        dialog.setMinimumWidth(340)
+        layout = QVBoxLayout(dialog)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(10)
+        label = QLabel(tr("crossfade_prompt"))
+        label.setObjectName("section")
+        label.setWordWrap(True)
+        layout.addWidget(label)
+        spin = QSpinBox()
+        spin.setRange(1, 12)
+        spin.setSuffix(" s")
+        spin.setValue(max(1, min(12, self._last_crossfade_seconds or 3)))
+        spin.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        layout.addWidget(spin)
+        row = QHBoxLayout()
+        row.addStretch(1)
+        cancel = QPushButton(tr("cancel"))
+        cancel.setObjectName("small")
+        ok = QPushButton(tr("apply"))
+        ok.setObjectName("small")
+        row.addWidget(cancel)
+        row.addWidget(ok)
+        layout.addLayout(row)
+        cancel.clicked.connect(dialog.reject)
+        ok.clicked.connect(dialog.accept)
+        spin.setFocus()
+        dialog.setStyleSheet(self.styleSheet())
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return None
+        return int(spin.value())
+
+    def _update_crossfade_button(self) -> None:
+        active = self.crossfade_seconds > 0
+        self.crossfade_btn.setChecked(active)
+        if active:
+            self.crossfade_btn.setToolTip(
+                tr("crossfade_active", seconds=self.crossfade_seconds)
+            )
+        else:
+            self.crossfade_btn.setToolTip(tr("crossfade"))
+
     # ------------------------------------------------------------- favoritos
     def _on_cell_clicked(self, row: int, column: int) -> None:
         if column == 0 and 0 <= row < len(self.visible):
@@ -3035,7 +3112,11 @@ class MainWindow(QMainWindow):
 
         if dialog.crossfade_seconds != self.crossfade_seconds:
             self.crossfade_seconds = dialog.crossfade_seconds
+            if self.crossfade_seconds > 0:
+                self._last_crossfade_seconds = self.crossfade_seconds
             self.settings.setValue("crossfade_seconds", self.crossfade_seconds)
+            self.settings.setValue("last_crossfade_seconds", self._last_crossfade_seconds)
+            self._update_crossfade_button()
             if self._fading:
                 self._cancel_fade(restore_volume=True)
                 self._crossfade_handled_end = False
@@ -3202,6 +3283,7 @@ class MainWindow(QMainWindow):
         self.settings.setValue("shuffle", self.shuffle)
         self.settings.setValue("repeat", self.repeat)
         self.settings.setValue("crossfade_seconds", self.crossfade_seconds)
+        self.settings.setValue("last_crossfade_seconds", self._last_crossfade_seconds)
         self.settings.setValue("background_mode", self.bg_mode)
         self.settings.setValue("background_color", self.bg_color)
         self.settings.setValue("background_image", self.bg_image_path)

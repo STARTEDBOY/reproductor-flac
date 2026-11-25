@@ -160,11 +160,17 @@ class MarqueeLabel(QLabel):
 
     def resizeEvent(self, event) -> None:  # noqa: N802 - API de Qt
         super().resizeEvent(event)
-        self._sync_marquee(reset_offset=False)
+        if event.size().width() != event.oldSize().width():
+            self._sync_marquee(reset_offset=False)
 
     def changeEvent(self, event) -> None:  # noqa: N802 - API de Qt
         super().changeEvent(event)
-        self._sync_marquee(reset_offset=False)
+        if event.type() in (
+            event.Type.FontChange,
+            event.Type.StyleChange,
+            event.Type.PaletteChange,
+        ):
+            self._sync_marquee(reset_offset=False)
 
     def _text_width(self) -> int:
         return self.fontMetrics().horizontalAdvance(self._full_text)
@@ -185,8 +191,9 @@ class MarqueeLabel(QLabel):
             if not self._timer.isActive():
                 self._timer.start()
         else:
-            self._offset = 0.0
-            self._timer.stop()
+            if self._timer.isActive() or self._offset != 0.0:
+                self._offset = 0.0
+                self._timer.stop()
         self.update()
 
     def _tick(self) -> None:
@@ -251,6 +258,8 @@ class MiniPlayerWindow(QWidget):
         super().__init__(None)
         self.player = player
         self._closing = False
+        self._last_track_path: str | None = None
+        self._last_cover_obj = None
         self.setWindowTitle("Reproductor FLAC")
         self.setWindowIcon(self.player.windowIcon())
         self.setWindowFlags(
@@ -360,33 +369,54 @@ class MiniPlayerWindow(QWidget):
         self.player.activateWindow()
         event.ignore()
 
-    def sync(self) -> None:
+    def showEvent(self, event) -> None:  # noqa: N802 - API de Qt
+        super().showEvent(event)
+        self.sync(force=True)
+
+    def sync(self, force: bool = False) -> None:
+        if not self.isVisible() and not force:
+            return
         p = self.player
         track = p.current
-        if track is None:
-            self.title.setText(tr("nothing_playing"))
-            self.title.setFont(text_font(tr("nothing_playing"), 20, bold=True))
-            self.artist.setText("—")
-            self.meta.setText("")
-            self.cover.setPixmap(p._placeholder().scaled(72, 72, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
-        else:
-            self.title.setText(track.title)
-            self.title.setFont(text_font(track.title, 20, bold=True))
-            self.artist.setText(track.display_artist)
-            self.meta.setText(track.display_album)
-            if p.current_cover is not None:
-                pm = p.current_cover.scaled(72, 72, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
-            else:
-                pm = p._placeholder().scaled(72, 72, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
-            self.cover.setPixmap(pm)
+        track_path = track.path if track is not None else None
+        cover_obj = p.current_cover
 
-        self.time_current.setText(p.time_current.text())
-        self.time_total.setText(p.time_total.text())
-        self.progress.blockSignals(True)
-        self.progress.setValue(p.progress.value())
-        self.progress.setEnabled(p.progress.isEnabled())
-        self.progress.blockSignals(False)
-        self.play_btn.setText(p.play_btn.text())
+        if force or track_path != self._last_track_path or cover_obj is not getattr(self, "_last_cover_obj", None):
+            self._last_track_path = track_path
+            self._last_cover_obj = cover_obj
+            if track is None:
+                self.title.setText(tr("nothing_playing"))
+                self.title.setFont(text_font(tr("nothing_playing"), 20, bold=True))
+                self.artist.setText("—")
+                self.meta.setText("")
+                self.cover.setPixmap(p._placeholder().scaled(72, 72, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+            else:
+                self.title.setText(track.title)
+                self.title.setFont(text_font(track.title, 20, bold=True))
+                self.artist.setText(track.display_artist)
+                self.meta.setText(track.display_album)
+                if cover_obj is not None:
+                    pm = cover_obj.scaled(72, 72, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                else:
+                    pm = p._placeholder().scaled(72, 72, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+                self.cover.setPixmap(pm)
+
+        tc = p.time_current.text()
+        tt = p.time_total.text()
+        if self.time_current.text() != tc:
+            self.time_current.setText(tc)
+        if self.time_total.text() != tt:
+            self.time_total.setText(tt)
+        pv = p.progress.value()
+        pe = p.progress.isEnabled()
+        if self.progress.value() != pv or self.progress.isEnabled() != pe:
+            self.progress.blockSignals(True)
+            self.progress.setValue(pv)
+            self.progress.setEnabled(pe)
+            self.progress.blockSignals(False)
+        pb = p.play_btn.text()
+        if self.play_btn.text() != pb:
+            self.play_btn.setText(pb)
 
     def retranslate(self) -> None:
         self.restore_btn.setText(tr("restore_window"))
@@ -2887,8 +2917,8 @@ class MainWindow(QMainWindow):
             self.mini_player._restore_main()
             return
         self._was_maximized_before_mini = self.isMaximized()
-        self.mini_player.sync()
         self.mini_player.show()
+        self.mini_player.sync(force=True)
         self.mini_player.raise_()
         self.mini_player.activateWindow()
         self.showMinimized()

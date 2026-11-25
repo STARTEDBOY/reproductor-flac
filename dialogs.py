@@ -5,7 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import Qt
-from PySide6.QtGui import QColor
+from PySide6.QtGui import QColor, QPixmap
 from PySide6.QtWidgets import (
     QAbstractItemView,
     QButtonGroup,
@@ -1135,4 +1135,164 @@ class SmartPlaylistDialog(QDialog):
         self.result_name = name
         self.result_type = key
         self.result_params = params
+        self.accept()
+
+
+class EditTrackDialog(QDialog):
+    """Edita metadatos y portada de una pista."""
+
+    def __init__(self, track, cover_bytes: bytes | None = None, parent=None):
+        super().__init__(parent)
+        self.track = track
+        self.cover_path: str | None = None
+        self.remove_cover_flag = False
+        self.setWindowTitle(tr("edit_info_title"))
+        self.setModal(True)
+        self.setMinimumWidth(560)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(20, 20, 20, 16)
+        layout.setSpacing(10)
+
+        heading = QLabel(tr("edit_info_title"))
+        heading.setObjectName("section")
+        layout.addWidget(heading)
+
+        # Cover
+        cover_row = QHBoxLayout()
+        cover_row.setSpacing(12)
+        self.cover_label = QLabel()
+        self.cover_label.setObjectName("cover")
+        self.cover_label.setFixedSize(120, 120)
+        self.cover_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self._set_cover_preview(cover_bytes)
+        cover_row.addWidget(self.cover_label, 0, Qt.AlignmentFlag.AlignTop)
+
+        cover_actions = QVBoxLayout()
+        cover_actions.setSpacing(6)
+        cover_title = QLabel(tr("cover_image"))
+        cover_title.setObjectName("small")
+        self.cover_status = QLabel(tr("cover_kept"))
+        self.cover_status.setObjectName("muted")
+        self.cover_status.setWordWrap(True)
+        choose_btn = QPushButton(tr("choose_image"))
+        choose_btn.setObjectName("small")
+        choose_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        remove_btn = QPushButton(tr("remove_cover"))
+        remove_btn.setObjectName("small")
+        remove_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        cover_actions.addWidget(cover_title)
+        cover_actions.addWidget(self.cover_status)
+        cover_actions.addWidget(choose_btn)
+        cover_actions.addWidget(remove_btn)
+        cover_actions.addStretch(1)
+        cover_row.addLayout(cover_actions, 1)
+        layout.addLayout(cover_row)
+
+        choose_btn.clicked.connect(self._choose_cover)
+        remove_btn.clicked.connect(self._remove_cover)
+
+        # Fields
+        grid = QGridLayout()
+        grid.setHorizontalSpacing(10)
+        grid.setVerticalSpacing(8)
+
+        self.title_edit = QLineEdit(track.title)
+        self.artist_edit = QLineEdit(track.artist)
+        self.album_edit = QLineEdit(track.album)
+        self.albumartist_edit = QLineEdit(track.albumartist)
+        self.year_edit = QLineEdit(track.year)
+        self.genre_edit = QLineEdit(track.genre)
+        self.track_edit = QLineEdit(str(track.tracknumber) if track.tracknumber else "")
+        self.disc_edit = QLineEdit(str(track.discnumber) if track.discnumber else "")
+
+        fields = [
+            (tr("col_title"), self.title_edit),
+            (tr("col_artist"), self.artist_edit),
+            (tr("col_album"), self.album_edit),
+            (tr("col_albumartist"), self.albumartist_edit),
+            (tr("col_year"), self.year_edit),
+            (tr("col_genre"), self.genre_edit),
+            (tr("col_tracknum"), self.track_edit),
+            (tr("col_discnum"), self.disc_edit),
+        ]
+        for i, (label_text, widget) in enumerate(fields):
+            lab = QLabel(label_text)
+            lab.setObjectName("small")
+            grid.addWidget(lab, i, 0)
+            grid.addWidget(widget, i, 1)
+        layout.addLayout(grid)
+
+        self.error = QLabel("")
+        self.error.setObjectName("muted")
+        self.error.setWordWrap(True)
+        layout.addWidget(self.error)
+
+        row = QHBoxLayout()
+        row.setSpacing(8)
+        cancel = QPushButton(tr("cancel"))
+        cancel.setObjectName("small")
+        cancel.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        save = QPushButton(tr("save"))
+        save.setObjectName("small")
+        save.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        row.addStretch(1)
+        row.addWidget(cancel)
+        row.addWidget(save)
+        layout.addLayout(row)
+
+        cancel.clicked.connect(self.reject)
+        save.clicked.connect(self._accept)
+
+    def _set_cover_preview(self, data: bytes | None) -> None:
+        pix = QPixmap()
+        if data and pix.loadFromData(data):
+            scaled = pix.scaled(120, 120, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+            self.cover_label.setPixmap(scaled)
+        else:
+            ph = QPixmap(120, 120)
+            ph.fill(Qt.GlobalColor.black)
+            self.cover_label.setPixmap(ph)
+
+    def _choose_cover(self) -> None:
+        path, _ = QFileDialog.getOpenFileName(
+            self,
+            tr("choose_image"),
+            str(Path.home()),
+            "Images (*.png *.jpg *.jpeg *.webp *.bmp);;All files (*)",
+        )
+        if not path:
+            return
+        try:
+            data = Path(path).read_bytes()
+        except Exception:
+            return
+        self.cover_path = path
+        self.remove_cover_flag = False
+        self.cover_status.setText(Path(path).name)
+        self._set_cover_preview(data)
+
+    def _remove_cover(self) -> None:
+        self.cover_path = None
+        self.remove_cover_flag = True
+        self.cover_status.setText(tr("cover_will_remove"))
+        self._set_cover_preview(None)
+
+    def _accept(self) -> None:
+        title = self.title_edit.text().strip()
+        if not title:
+            self.error.setText(tr("name_required"))
+            return
+        self.result = {
+            "title": title,
+            "artist": self.artist_edit.text().strip(),
+            "album": self.album_edit.text().strip(),
+            "albumartist": self.albumartist_edit.text().strip(),
+            "year": self.year_edit.text().strip(),
+            "genre": self.genre_edit.text().strip(),
+            "tracknumber": self.track_edit.text().strip(),
+            "discnumber": self.disc_edit.text().strip(),
+            "cover_path": self.cover_path,
+            "remove_cover": self.remove_cover_flag,
+        }
         self.accept()

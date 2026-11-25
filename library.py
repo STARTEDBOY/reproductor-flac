@@ -18,6 +18,19 @@ from pathlib import Path
 
 import mutagen
 from mutagen.flac import FLAC, Picture
+from mutagen.id3 import (
+    APIC,
+    ID3,
+    TALB,
+    TCON,
+    TDRC,
+    TIT2,
+    TPE1,
+    TPE2,
+    TPOS,
+    TRCK,
+)
+from mutagen.mp4 import MP4, MP4Cover
 
 from i18n import tr
 
@@ -398,6 +411,244 @@ def get_cover_bytes(track: Track) -> bytes | None:
     except OSError:
         pass
     return None
+
+
+# ----------------------------------------------------------------- escritura
+
+def _cover_cache_paths(album_key: str) -> tuple[Path, Path]:
+    key = hashlib.sha1(album_key.encode("utf-8", "replace")).hexdigest()[:20]
+    return CACHE_DIR / f"{key}.img", CACHE_DIR / f"{key}.none"
+
+
+def clear_cover_cache(album_key: str) -> None:
+    for path in _cover_cache_paths(album_key):
+        try:
+            path.unlink()
+        except OSError:
+            pass
+
+
+def _mime_from_path(path: Path) -> str:
+    suffix = path.suffix.lower()
+    if suffix in {".jpg", ".jpeg"}:
+        return "image/jpeg"
+    if suffix == ".png":
+        return "image/png"
+    if suffix == ".webp":
+        return "image/webp"
+    if suffix == ".bmp":
+        return "image/bmp"
+    return "application/octet-stream"
+
+
+def _read_cover_file(cover_path: str | Path) -> tuple[bytes, str]:
+    path = Path(cover_path)
+    data = path.read_bytes()
+    return data, _mime_from_path(path)
+
+
+def _set_vorbis(tags, key: str, value: str) -> None:
+    if value:
+        tags[key] = [value]
+    elif key in tags:
+        del tags[key]
+
+
+def _set_id3_text(tags, frame_cls, key: str, value: str) -> None:
+    tags.delall(key)
+    if value:
+        tags.add(frame_cls(encoding=3, text=[value]))
+
+
+def save_track_metadata(
+    track: Track,
+    *,
+    title: str,
+    artist: str,
+    album: str,
+    albumartist: str,
+    year: str,
+    genre: str,
+    tracknumber: str,
+    discnumber: str,
+    cover_path: str | None = None,
+    remove_cover: bool = False,
+) -> Track:
+    """Guarda metadatos/portada en el archivo y devuelve el Track actualizado."""
+    path = Path(track.path)
+    audio = _load(path)
+    if audio is None:
+        raise ValueError(f"No se pudo abrir: {path}")
+
+    suffix = path.suffix.lower()
+    cover_data = None
+    cover_mime = None
+    if cover_path:
+        cover_data, cover_mime = _read_cover_file(cover_path)
+
+    if suffix == ".flac":
+        if audio.tags is None:
+            audio.add_tags()
+        tags = audio.tags
+        _set_vorbis(tags, "title", title)
+        _set_vorbis(tags, "artist", artist)
+        _set_vorbis(tags, "album", album)
+        _set_vorbis(tags, "albumartist", albumartist)
+        _set_vorbis(tags, "date", year)
+        _set_vorbis(tags, "genre", genre)
+        _set_vorbis(tags, "tracknumber", tracknumber)
+        _set_vorbis(tags, "discnumber", discnumber)
+        if remove_cover:
+            audio.clear_pictures()
+        elif cover_data is not None:
+            audio.clear_pictures()
+            pic = Picture()
+            pic.type = 3
+            pic.mime = cover_mime or "image/jpeg"
+            pic.desc = "Cover"
+            pic.data = cover_data
+            audio.add_picture(pic)
+        audio.save()
+
+    elif suffix == ".mp3":
+        try:
+            tags = ID3(path)
+        except Exception:
+            try:
+                audio.add_tags()
+            except Exception:
+                pass
+            tags = audio.tags
+            if tags is None:
+                tags = ID3()
+        _set_id3_text(tags, TIT2, "TIT2", title)
+        _set_id3_text(tags, TPE1, "TPE1", artist)
+        _set_id3_text(tags, TALB, "TALB", album)
+        _set_id3_text(tags, TPE2, "TPE2", albumartist)
+        _set_id3_text(tags, TDRC, "TDRC", year)
+        _set_id3_text(tags, TCON, "TCON", genre)
+        _set_id3_text(tags, TRCK, "TRCK", tracknumber)
+        _set_id3_text(tags, TPOS, "TPOS", discnumber)
+        if remove_cover:
+            tags.delall("APIC")
+        elif cover_data is not None:
+            tags.delall("APIC")
+            tags.add(APIC(encoding=3, mime=cover_mime or "image/jpeg", type=3, desc="Cover", data=cover_data))
+        tags.save(path)
+
+    elif suffix in {".m4a", ".mp4", ".aac", ".alac"}:
+        if audio.tags is None:
+            audio.add_tags()
+        tags = audio.tags
+        mapping = {
+            "\xa9nam": title,
+            "\xa9ART": artist,
+            "\xa9alb": album,
+            "aART": albumartist,
+            "\xa9day": year,
+            "\xa9gen": genre,
+        }
+        for key, value in mapping.items():
+            if value:
+                tags[key] = [value]
+            elif key in tags:
+                del tags[key]
+        if tracknumber:
+            try:
+                tags["trkn"] = [(int(tracknumber.split("/")[0]), 0)]
+            except Exception:
+                pass
+        elif "trkn" in tags:
+            del tags["trkn"]
+        if discnumber:
+            try:
+                tags["disk"] = [(int(discnumber.split("/")[0]), 0)]
+            except Exception:
+                pass
+        elif "disk" in tags:
+            del tags["disk"]
+        if remove_cover:
+            tags.pop("covr", None)
+        elif cover_data is not None:
+            if (cover_mime or "").endswith("png"):
+                fmt = MP4Cover.FORMAT_PNG
+            else:
+                fmt = MP4Cover.FORMAT_JPEG
+            tags["covr"] = [MP4Cover(cover_data, imageformat=fmt)]
+        audio.save()
+
+    else:
+        # Vorbis/APE/generic: attempt common tag names.
+        tags = audio.tags
+        if tags is None:
+            try:
+                audio.add_tags()
+            except Exception:
+                pass
+            tags = audio.tags
+        if tags is not None:
+            try:
+                _set_vorbis(tags, "title", title)
+                _set_vorbis(tags, "artist", artist)
+                _set_vorbis(tags, "album", album)
+                _set_vorbis(tags, "albumartist", albumartist)
+                _set_vorbis(tags, "date", year)
+                _set_vorbis(tags, "genre", genre)
+                _set_vorbis(tags, "tracknumber", tracknumber)
+                _set_vorbis(tags, "discnumber", discnumber)
+            except Exception:
+                pass
+            # Cover for ogg/opus/flac-like containers with pictures attr
+            if hasattr(audio, "clear_pictures") and hasattr(audio, "add_picture"):
+                if remove_cover:
+                    audio.clear_pictures()
+                elif cover_data is not None:
+                    audio.clear_pictures()
+                    pic = Picture()
+                    pic.type = 3
+                    pic.mime = cover_mime or "image/jpeg"
+                    pic.desc = "Cover"
+                    pic.data = cover_data
+                    audio.add_picture(pic)
+        audio.save()
+
+    # Invalidate cover cache for old and new album keys.
+    old_album_key = track.album_key
+    new_album_key = f"{albumartist or artist}|{album}"
+    clear_cover_cache(old_album_key)
+    clear_cover_cache(new_album_key)
+
+    updated = read_track(path)
+    if updated is None:
+        raise ValueError(f"No se pudo leer la pista actualizada: {path}")
+    return updated
+
+
+def update_track_in_cache(root: str | Path, updated: Track) -> None:
+    """Actualiza la entrada de una pista en la caché de biblioteca."""
+    key = _root_key(root)
+    roots = _read_library_cache()
+    entry = roots.get(key)
+    if not isinstance(entry, dict):
+        return
+    files = entry.get("files")
+    if not isinstance(files, dict):
+        return
+    try:
+        relative = Path(updated.path).relative_to(Path(root).expanduser()).as_posix()
+    except Exception:
+        relative = Path(updated.path).name
+    try:
+        stat = Path(updated.path).stat()
+    except OSError:
+        return
+    files[relative] = {
+        "mtime_ns": stat.st_mtime_ns,
+        "size": stat.st_size,
+        "track": _track_data(updated),
+    }
+    roots[key] = {"files": files}
+    _write_library_cache(roots)
 
 
 def library_summary(tracks: list[Track]) -> str:

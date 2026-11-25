@@ -59,6 +59,7 @@ from PySide6.QtWidgets import (
 from crt import CRT_MODES, CrtOverlay
 from dialogs import (
     LYRICS_EFFECTS,
+    EditTrackDialog,
     FolderDialog,
     NameDialog,
     PlaylistPickerDialog,
@@ -75,7 +76,9 @@ from library import (
     get_lyrics,
     library_summary,
     load_cached_library,
+    save_track_metadata,
     scan_library,
+    update_track_in_cache,
 )
 from mpv_backend import MpvController
 from spectrum import SPECTRUM_AVAILABLE, SpectrumWidget
@@ -2683,6 +2686,10 @@ class MainWindow(QMainWindow):
         )
 
         menu.addSeparator()
+        edit_action = menu.addAction(tr("edit_info"))
+        edit_action.triggered.connect(
+            lambda _checked=False, t=track: self._edit_track_info(t)
+        )
         info_action = menu.addAction(tr("view_info"))
         info_action.triggered.connect(
             lambda _checked=False, t=track: self._show_track_info(t)
@@ -2694,6 +2701,74 @@ class MainWindow(QMainWindow):
         dialog = TrackInfoDialog(track, self)
         dialog.setStyleSheet(self.styleSheet())
         dialog.exec()
+
+    def _edit_track_info(self, track: Track) -> None:
+        cover_bytes = get_cover_bytes(track)
+        dialog = EditTrackDialog(track, cover_bytes=cover_bytes, parent=self)
+        dialog.setStyleSheet(self.styleSheet())
+        if dialog.exec() != QDialog.DialogCode.Accepted:
+            return
+        data = getattr(dialog, "result", None)
+        if not data:
+            return
+        try:
+            updated = save_track_metadata(track, **data)
+            if self._displayed_root:
+                update_track_in_cache(self._displayed_root, updated)
+        except Exception as exc:
+            box = QMessageBox(self)
+            box.setWindowTitle(tr("edit_info_title"))
+            box.setText(tr("save_error", error=str(exc)))
+            box.setStyleSheet(self.styleSheet())
+            box.exec()
+            return
+
+        self._replace_track(track.path, updated)
+        self._set_state("metadata_saved")
+
+    def _replace_track(self, old_path: str, updated: Track) -> None:
+        replaced = False
+        for i, t in enumerate(self.tracks):
+            if t.path == old_path:
+                self.tracks[i] = updated
+                replaced = True
+                break
+        if not replaced:
+            self.tracks.append(updated)
+        self.track_by_path.pop(old_path, None)
+        self.track_by_path[updated.path] = updated
+        self.tracks.sort(
+            key=lambda t: (
+                (t.albumartist or t.artist).casefold(),
+                t.album.casefold(),
+                t.discnumber,
+                t.tracknumber,
+                t.title.casefold(),
+                t.path.casefold(),
+            )
+        )
+
+        current_artist = self.artist_combo.currentData() or ""
+        current_album = self.album_combo.currentData() or ""
+        self._populate_filters()
+        self._restore_filters(current_artist, current_album)
+        self._apply_filters()
+        # Reselect edited track
+        for row, t in enumerate(self.visible):
+            if t.path == updated.path:
+                self.table.selectRow(row)
+                break
+
+        if self.current is not None and self.current.path == old_path:
+            self.current = updated
+            self.duration = updated.duration
+            self.time_total.setText(format_time(updated.duration))
+            self._set_title_text(updated.title)
+            self._set_line_text(self.artist_label, updated.display_artist, 26, color="#5DA9E9")
+            self._set_line_text(self.album_label, updated.display_album, 18)
+            self._set_line_text(self.meta_label, updated.quality, 14)
+            self._update_cover(updated)
+            self._sync_mini_player()
 
     def _confirm(self, title: str, message: str) -> bool:
         box = QMessageBox(self)

@@ -241,6 +241,155 @@ class ScanWorker(QThread):
             self.fail.emit(f"{type(exc).__name__}: {exc}")
 
 
+class MiniPlayerWindow(QWidget):
+    """Ventana compacta siempre visible para controlar la reproducción."""
+
+    def __init__(self, player: "MainWindow"):
+        super().__init__(None)
+        self.player = player
+        self._closing = False
+        self.setWindowTitle("Reproductor FLAC")
+        self.setWindowIcon(self.player.windowIcon())
+        self.setWindowFlags(
+            Qt.WindowType.Window
+            | Qt.WindowType.WindowStaysOnTopHint
+            | Qt.WindowType.WindowCloseButtonHint
+        )
+        self.setMinimumWidth(340)
+        self.setMaximumWidth(420)
+
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(12, 12, 12, 12)
+        layout.setSpacing(8)
+
+        top = QHBoxLayout()
+        top.setSpacing(8)
+        self.cover = QLabel()
+        self.cover.setObjectName("cover")
+        self.cover.setFixedSize(72, 72)
+        self.cover.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        top.addWidget(self.cover, 0, Qt.AlignmentFlag.AlignTop)
+
+        info = QVBoxLayout()
+        info.setSpacing(2)
+        self.title = MarqueeLabel(tr("nothing_playing"))
+        self.title.setObjectName("title")
+        self.title.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        self.title.setFont(text_font(tr("nothing_playing"), 20, bold=True))
+        self.title.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        self.artist = QLabel("—")
+        self.artist.setObjectName("artist")
+        self.artist.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        self.artist.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        self.meta = QLabel("")
+        self.meta.setObjectName("small")
+        self.meta.setAlignment(Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter)
+        self.meta.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        info.addWidget(self.title)
+        info.addWidget(self.artist)
+        info.addWidget(self.meta)
+        top.addLayout(info, 1)
+        layout.addLayout(top)
+
+        times = QHBoxLayout()
+        self.time_current = QLabel("0:00")
+        self.time_current.setObjectName("muted")
+        self.time_total = QLabel("0:00")
+        self.time_total.setObjectName("muted")
+        self.time_total.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        times.addWidget(self.time_current)
+        times.addStretch(1)
+        times.addWidget(self.time_total)
+        layout.addLayout(times)
+
+        self.progress = ClickSlider(Qt.Orientation.Horizontal)
+        self.progress.setRange(0, 1000)
+        self.progress.setValue(0)
+        self.progress.setEnabled(False)
+        layout.addWidget(self.progress)
+
+        controls = QHBoxLayout()
+        controls.setSpacing(6)
+        self.prev_btn = QPushButton("<<")
+        self.prev_btn.setObjectName("transport")
+        self.prev_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.play_btn = QPushButton(tr("play"))
+        self.play_btn.setObjectName("play")
+        self.play_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.play_btn.setMinimumHeight(36)
+        self.next_btn = QPushButton(">>")
+        self.next_btn.setObjectName("transport")
+        self.next_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.restore_btn = QPushButton(tr("restore_window"))
+        self.restore_btn.setObjectName("small")
+        self.restore_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        controls.addWidget(self.prev_btn)
+        controls.addWidget(self.play_btn, 1)
+        controls.addWidget(self.next_btn)
+        controls.addWidget(self.restore_btn)
+        layout.addLayout(controls)
+
+        self.prev_btn.clicked.connect(self.player.prev_track)
+        self.play_btn.clicked.connect(self.player.play_pause)
+        self.next_btn.clicked.connect(self.player.next_track)
+        self.restore_btn.clicked.connect(self._restore_main)
+        self.progress.scrubbed.connect(self.player._seek_scrub)
+        self.progress.seekRequested.connect(self.player._seek_to)
+
+        self.sync()
+
+    def _restore_main(self) -> None:
+        self.hide()
+        if getattr(self.player, "_was_maximized_before_mini", False):
+            self.player.showMaximized()
+        else:
+            self.player.showNormal()
+        self.player.raise_()
+        self.player.activateWindow()
+
+    def closeEvent(self, event) -> None:  # noqa: N802 - API de Qt
+        if self._closing:
+            super().closeEvent(event)
+            return
+        self.hide()
+        self.player.showNormal()
+        self.player.raise_()
+        self.player.activateWindow()
+        event.ignore()
+
+    def sync(self) -> None:
+        p = self.player
+        track = p.current
+        if track is None:
+            self.title.setText(tr("nothing_playing"))
+            self.title.setFont(text_font(tr("nothing_playing"), 20, bold=True))
+            self.artist.setText("—")
+            self.meta.setText("")
+            self.cover.setPixmap(p._placeholder().scaled(72, 72, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation))
+        else:
+            self.title.setText(track.title)
+            self.title.setFont(text_font(track.title, 20, bold=True))
+            self.artist.setText(track.display_artist)
+            self.meta.setText(track.display_album)
+            if p.current_cover is not None:
+                pm = p.current_cover.scaled(72, 72, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+            else:
+                pm = p._placeholder().scaled(72, 72, Qt.AspectRatioMode.KeepAspectRatio, Qt.TransformationMode.SmoothTransformation)
+            self.cover.setPixmap(pm)
+
+        self.time_current.setText(p.time_current.text())
+        self.time_total.setText(p.time_total.text())
+        self.progress.blockSignals(True)
+        self.progress.setValue(p.progress.value())
+        self.progress.setEnabled(p.progress.isEnabled())
+        self.progress.blockSignals(False)
+        self.play_btn.setText(p.play_btn.text())
+
+    def retranslate(self) -> None:
+        self.restore_btn.setText(tr("restore_window"))
+        self.sync()
+
+
 class MainWindow(QMainWindow):
     def __init__(self, base_dir: Path, initial_library: str | None = None):
         super().__init__()
@@ -257,6 +406,8 @@ class MainWindow(QMainWindow):
         self.last_volume = 70
         self.scan_thread: ScanWorker | None = None
         self.pending_library: str | None = None
+        self.mini_player: MiniPlayerWindow | None = None
+        self._was_maximized_before_mini = False
         self._displayed_root = ""
         self.current_cover: QPixmap | None = None
         self.track_by_path: dict[str, Track] = {}
@@ -286,6 +437,19 @@ class MainWindow(QMainWindow):
         )
         if self.lyrics_effect_name not in LYRICS_EFFECTS:
             self.lyrics_effect_name = "fade"
+        self.crossfade_seconds = int(self.settings.value("crossfade_seconds", 0) or 0)
+        self.crossfade_seconds = max(0, min(12, self.crossfade_seconds))
+        self._fade_timer = QTimer(self)
+        self._fade_timer.setInterval(40)
+        self._fade_timer.timeout.connect(self._fade_tick)
+        self._fading = False
+        self._fade_out_next = False
+        self._fade_start = 0.0
+        self._fade_duration = 1.0
+        self._fade_from = 0.0
+        self._fade_to = 0.0
+        self._crossfade_handled_end = False
+        self._pending_fade_in = False
 
         self.cover_size = DEFAULT_COVER_SIZE
         self.bg_mode = str(self.settings.value("background_mode", "black") or "black")
@@ -387,6 +551,7 @@ class MainWindow(QMainWindow):
         self.sleep_timer.timeout.connect(self._sleep_tick)
 
         volume = int(self.settings.value("volume", 70))
+        self._user_volume = max(0, min(100, volume))
         self.mpv = MpvController(volume=volume, parent=self)
 
         self.setWindowTitle(f"{tr('app_name')} · STARTED")
@@ -742,12 +907,17 @@ class MainWindow(QMainWindow):
         self.sleep_btn.setCheckable(True)
         self.sleep_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.sleep_btn.setToolTip(tr("tooltip_sleep"))
+        self.mini_btn = QPushButton(tr("mini_player"))
+        self.mini_btn.setObjectName("small")
+        self.mini_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.mini_btn.setToolTip(tr("tooltip_mini_player"))
         self.settings_btn = QPushButton(tr("settings"))
         self.settings_btn.setObjectName("small")
         self.settings_btn.setFocusPolicy(Qt.FocusPolicy.NoFocus)
         self.settings_btn.setToolTip(tr("tooltip_settings"))
         top.addWidget(self.sleep_label)
         top.addWidget(self.sleep_btn)
+        top.addWidget(self.mini_btn)
         top.addWidget(self.settings_btn)
         layout.addLayout(top)
 
@@ -972,7 +1142,8 @@ class MainWindow(QMainWindow):
         label.setToolTip(text)
 
     def _apply_style(self) -> None:
-        self.setStyleSheet(build_style(self.bg_mode, self.bg_color))
+        style = build_style(self.bg_mode, self.bg_color)
+        self.setStyleSheet(style)
         set_icon_palette(self.bg_mode, self.bg_color)
         self._refresh_icons()
         self.backdrop.set_background(self.bg_mode, self.bg_color)
@@ -982,6 +1153,8 @@ class MainWindow(QMainWindow):
         self.backdrop.set_image(
             self.bg_image if self.bg_mode == "image" else None
         )
+        if self.mini_player is not None:
+            self.mini_player.setStyleSheet(style)
 
     def _refresh_icons(self) -> None:
         """Regenera los iconos con los colores del fondo actual."""
@@ -1048,6 +1221,8 @@ class MainWindow(QMainWindow):
         self.now_label.setText(tr("now_playing"))
         self.sleep_btn.setText(tr("timer"))
         self.sleep_btn.setToolTip(tr("tooltip_sleep"))
+        self.mini_btn.setText(tr("mini_player"))
+        self.mini_btn.setToolTip(tr("tooltip_mini_player"))
         self.settings_btn.setText(tr("settings"))
         self.settings_btn.setToolTip(tr("tooltip_settings"))
         self.progress.setToolTip(tr("tooltip_progress"))
@@ -1075,6 +1250,8 @@ class MainWindow(QMainWindow):
         self._refresh_play_text()
         self._refresh_state_text()
         self._update_sleep_label()
+        if self.mini_player is not None:
+            self.mini_player.retranslate()
         if self.current_cover is None:
             self._render_cover()
 
@@ -1140,6 +1317,7 @@ class MainWindow(QMainWindow):
         )
 
         self.sleep_btn.clicked.connect(self._open_sleep_dialog)
+        self.mini_btn.clicked.connect(self._toggle_mini_player)
         self.settings_btn.clicked.connect(self._open_settings)
 
         self.mpv.positionChanged.connect(self._on_position)
@@ -1178,11 +1356,13 @@ class MainWindow(QMainWindow):
         self.repeat_btn.setChecked(self.repeat != "off")
         self._update_repeat_button()
 
-        volume = int(self.settings.value("volume", 70))
+        volume = max(0, min(100, int(self.settings.value("volume", 70) or 70)))
+        self._user_volume = volume
         self.volume.blockSignals(True)
         self.volume.setValue(volume)
         self.volume.blockSignals(False)
         self.volume_value.setText(str(volume))
+        self.mpv.set_volume(volume)
 
         self._refresh_playlist_combo()
         self._refresh_history_combo()
@@ -1612,6 +1792,8 @@ class MainWindow(QMainWindow):
         start_position: float = 0.0,
         autoplay: bool = True,
     ) -> None:
+        self._cancel_fade(restore_volume=False)
+        self._crossfade_handled_end = False
         self.current = track
         self._counted_current = None
         self.finished_queue = False
@@ -1646,11 +1828,22 @@ class MainWindow(QMainWindow):
         self._set_play_text("pause" if autoplay else "play")
         self._set_state("loading" if autoplay else "resuming")
         self._mark_playing()
+        should_fade_in = (
+            autoplay
+            and self.crossfade_seconds > 0
+            and self._user_volume > 0
+        )
+        if should_fade_in:
+            self.mpv.set_volume(0)
+        else:
+            self.mpv.set_volume(self._user_volume)
         self.mpv.load(
             track.path,
             start=self.position,
             paused=not autoplay,
         )
+        self._pending_fade_in = should_fade_in
+        self._sync_mini_player()
 
     def play_pause(self) -> None:
         if self.finished_queue and self.current is not None:
@@ -1670,6 +1863,9 @@ class MainWindow(QMainWindow):
         self.mpv.toggle_pause()
 
     def next_track(self, auto: bool = False) -> None:
+        if not auto:
+            self._cancel_fade(restore_volume=False)
+            self._crossfade_handled_end = False
         if not self.visible:
             return
         if self.shuffle and len(self.visible) > 1:
@@ -1692,10 +1888,14 @@ class MainWindow(QMainWindow):
             self._finish_queue()
 
     def prev_track(self) -> None:
+        self._cancel_fade(restore_volume=False)
+        self._crossfade_handled_end = False
         if self.current is not None and self.position > 3:
             self.mpv.seek(0)
+            self.mpv.set_volume(self._user_volume)
             return
         if not self.visible:
+            self.mpv.set_volume(self._user_volume)
             return
         index = (
             self.visible.index(self.current)
@@ -1712,12 +1912,17 @@ class MainWindow(QMainWindow):
     def _on_ended(self) -> None:
         if self.current is None:
             return
+        if self._crossfade_handled_end:
+            self._crossfade_handled_end = False
+            return
         if self.repeat == "one":
             self._play_track(self.current)
             return
         self.next_track(auto=True)
 
     def _finish_queue(self) -> None:
+        self._cancel_fade(restore_volume=True)
+        self._crossfade_handled_end = False
         self.finished_queue = True
         self.position = 0.0
         self.mpv.stop()
@@ -1729,6 +1934,7 @@ class MainWindow(QMainWindow):
         self._set_play_text("play")
         self._set_state("end_of_queue")
         self._clear_lyrics()
+        self._sync_mini_player()
 
     def _load_lyrics(self, track: Track) -> None:
         """Carga la letra de la pista y muestra la línea de la posición."""
@@ -1861,6 +2067,21 @@ class MainWindow(QMainWindow):
         self.progress.blockSignals(False)
         self.time_current.setText(format_time(position))
 
+        cf = self.crossfade_seconds
+        if (
+            cf > 0
+            and not self._fading
+            and not self._crossfade_handled_end
+            and not self.finished_queue
+            and not self.mpv.paused
+            and self.current is not None
+        ):
+            remaining = self.duration - position
+            if 0 < remaining <= cf:
+                self._crossfade_handled_end = True
+                self._start_fade_out_for_next()
+        self._sync_mini_player()
+
     def _on_duration(self, duration: float) -> None:
         self.duration = duration
         self.time_total.setText(format_time(duration))
@@ -1871,20 +2092,32 @@ class MainWindow(QMainWindow):
             self.progress.blockSignals(True)
             self.progress.setValue(value)
             self.progress.blockSignals(False)
+        self._sync_mini_player()
 
     def _on_paused(self, paused: bool) -> None:
         if self.current is None or self.finished_queue:
             return
+        if paused and self._fading:
+            self._cancel_fade(restore_volume=True)
+            self._crossfade_handled_end = False
         self._set_play_text("play" if paused else "pause")
         self._set_state("paused" if paused else "playing")
         if not paused:
             self._record_play(self.current)
+        self._sync_mini_player()
 
     def _on_loaded(self) -> None:
+        self._crossfade_handled_end = False
         if self.current is not None and not self.finished_queue:
             self._set_state("paused" if self.mpv.paused else "playing")
+            if self._pending_fade_in and not self.mpv.paused:
+                self._pending_fade_in = False
+                self._start_fade_in()
+            else:
+                self._pending_fade_in = False
             if not self.mpv.paused:
                 self._record_play(self.current)
+        self._sync_mini_player()
 
     def _on_ready(self) -> None:
         if not self.tracks:
@@ -1904,6 +2137,9 @@ class MainWindow(QMainWindow):
         if self.duration <= 0:
             self.seeking = False
             return
+        if self._fading:
+            self._cancel_fade(restore_volume=True)
+        self._crossfade_handled_end = False
         target = value / 1000 * self.duration
         self.mpv.seek(target)
         self.position = target
@@ -1911,14 +2147,23 @@ class MainWindow(QMainWindow):
         self.seeking = False
 
     def _volume_slider(self, value: int) -> None:
-        self.volume_value.setText(str(value))
-        self.mpv.set_volume(value)
+        self._user_volume = max(0, min(100, int(value)))
+        self.volume_value.setText(str(self._user_volume))
+        if not self._fading:
+            self.mpv.set_volume(self._user_volume)
+        elif not self._fade_out_next:
+            self._fade_to = float(self._user_volume)
+            if self._user_volume <= 0:
+                self._cancel_fade(restore_volume=True)
 
     def _on_mpv_volume(self, value: int) -> None:
+        if self._fading:
+            return
+        self._user_volume = max(0, min(100, int(value)))
         self.volume.blockSignals(True)
-        self.volume.setValue(value)
+        self.volume.setValue(self._user_volume)
         self.volume.blockSignals(False)
-        self.volume_value.setText(str(value))
+        self.volume_value.setText(str(self._user_volume))
 
     def _volume_up(self) -> None:
         self.volume.setValue(min(100, self.volume.value() + 5))
@@ -1932,6 +2177,82 @@ class MainWindow(QMainWindow):
             self.volume.setValue(0)
         else:
             self.volume.setValue(self.last_volume or 70)
+
+    # ------------------------------------------------------------- crossfade
+    def _cancel_fade(self, restore_volume: bool = True) -> None:
+        self._fade_timer.stop()
+        was_out = self._fade_out_next
+        self._fading = False
+        self._fade_out_next = False
+        if restore_volume:
+            self.mpv.set_volume(self._user_volume)
+        return was_out
+
+    def _start_fade_in(self) -> None:
+        cf = self.crossfade_seconds
+        if cf <= 0 or self._user_volume <= 0:
+            self._cancel_fade(restore_volume=True)
+            return
+        self._fading = True
+        self._fade_out_next = False
+        self._fade_start = time.monotonic()
+        self._fade_duration = float(cf)
+        self._fade_from = 0.0
+        self._fade_to = float(self._user_volume)
+        self.mpv.set_volume(0)
+        self._fade_timer.start()
+
+    def _start_fade_out_for_next(self) -> None:
+        if self._fading and self._fade_out_next:
+            return
+        cf = self.crossfade_seconds
+        if cf <= 0:
+            return
+        current_vol = float(max(0, min(100, self._user_volume)))
+        if self._fading:
+            # If a fade-in is still running, start fading out from current level.
+            elapsed = time.monotonic() - self._fade_start
+            ratio = min(1.0, elapsed / max(0.01, self._fade_duration))
+            current_vol = self._fade_from + (self._fade_to - self._fade_from) * ratio
+        self._fading = True
+        self._fade_out_next = True
+        self._fade_start = time.monotonic()
+        remaining = max(0.1, self.duration - self.position) if self.duration > 0 else float(cf)
+        self._fade_duration = max(0.1, min(float(cf), remaining))
+        self._fade_from = float(max(0.0, min(100.0, current_vol)))
+        self._fade_to = 0.0
+        self._fade_timer.start()
+
+    def _fade_tick(self) -> None:
+        if not self._fading:
+            self._fade_timer.stop()
+            return
+        elapsed = time.monotonic() - self._fade_start
+        ratio = min(1.0, elapsed / max(0.01, self._fade_duration))
+        volume = int(round(self._fade_from + (self._fade_to - self._fade_from) * ratio))
+        volume = max(0, min(100, volume))
+        self.mpv.set_volume(volume)
+        if ratio < 1.0:
+            return
+        self._fade_timer.stop()
+        was_out = self._fade_out_next
+        self._fading = False
+        self._fade_out_next = False
+        if was_out:
+            self._crossfade_advance()
+
+    def _crossfade_advance(self) -> None:
+        if self.current is None:
+            self.mpv.set_volume(self._user_volume)
+            return
+        if self.repeat == "one":
+            self._crossfade_handled_end = True
+            self._play_track(self.current)
+            self._crossfade_handled_end = True
+            return
+        self._crossfade_handled_end = True
+        self.next_track(auto=True)
+        self._crossfade_handled_end = True
 
     def _toggle_shuffle(self) -> None:
         self.shuffle = not self.shuffle
@@ -2552,6 +2873,7 @@ class MainWindow(QMainWindow):
         self._render_cover()
         if self.bg_mode == "cover":
             self.backdrop.set_cover(original)
+        self._sync_mini_player()
 
     def _render_cover(self) -> None:
         if self.current_cover is not None:
@@ -2631,6 +2953,24 @@ class MainWindow(QMainWindow):
         self.crt_overlay.set_mode(mode)
         self.crt_overlay.raise_()
 
+    def _toggle_mini_player(self) -> None:
+        if self.mini_player is None:
+            self.mini_player = MiniPlayerWindow(self)
+            self.mini_player.setStyleSheet(self.styleSheet())
+        if self.mini_player.isVisible():
+            self.mini_player._restore_main()
+            return
+        self._was_maximized_before_mini = self.isMaximized()
+        self.mini_player.sync()
+        self.mini_player.show()
+        self.mini_player.raise_()
+        self.mini_player.activateWindow()
+        self.showMinimized()
+
+    def _sync_mini_player(self) -> None:
+        if self.mini_player is not None and self.mini_player.isVisible():
+            self.mini_player.sync()
+
     def _open_settings(self) -> None:
         dialog = SettingsDialog(
             self.language,
@@ -2643,6 +2983,7 @@ class MainWindow(QMainWindow):
             SPECTRUM_AVAILABLE,
             self.crt_mode,
             sorted(self.blacklist),
+            self.crossfade_seconds,
             self,
         )
         dialog.setStyleSheet(self.styleSheet())
@@ -2691,6 +3032,13 @@ class MainWindow(QMainWindow):
             self.blacklist = new_blacklist
             self.settings.setValue("blacklist", sorted(self.blacklist))
             self._apply_filters()
+
+        if dialog.crossfade_seconds != self.crossfade_seconds:
+            self.crossfade_seconds = dialog.crossfade_seconds
+            self.settings.setValue("crossfade_seconds", self.crossfade_seconds)
+            if self._fading:
+                self._cancel_fade(restore_volume=True)
+                self._crossfade_handled_end = False
 
     # ---------------------------------------------------------- temporizador
     def _open_sleep_dialog(self) -> None:
@@ -2839,6 +3187,9 @@ class MainWindow(QMainWindow):
     def _seek_relative(self, seconds: float) -> None:
         if self.current is None or self.duration <= 0:
             return
+        if self._fading:
+            self._cancel_fade(restore_volume=True)
+        self._crossfade_handled_end = False
         target = max(0.0, min(self.duration, self.position + seconds))
         self.mpv.seek(target)
         self.position = target
@@ -2850,6 +3201,7 @@ class MainWindow(QMainWindow):
         self.settings.setValue("volume", self.volume.value())
         self.settings.setValue("shuffle", self.shuffle)
         self.settings.setValue("repeat", self.repeat)
+        self.settings.setValue("crossfade_seconds", self.crossfade_seconds)
         self.settings.setValue("background_mode", self.bg_mode)
         self.settings.setValue("background_color", self.bg_color)
         self.settings.setValue("background_image", self.bg_image_path)
@@ -2862,6 +3214,11 @@ class MainWindow(QMainWindow):
         self.settings.sync()
         self._save_playlists()
         self._save_history()
+        self._fade_timer.stop()
+        if self.mini_player is not None:
+            self.mini_player._closing = True
+            self.mini_player.close()
+            self.mini_player = None
         self.spectrum.stop()
         if self.scan_thread is not None and self.scan_thread.isRunning():
             self.scan_thread.wait(3000)

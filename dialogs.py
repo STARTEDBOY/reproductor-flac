@@ -433,6 +433,7 @@ class SettingsDialog(QDialog):
         spectrum_available: bool = True,
         crt_mode: str = "off",
         blacklist: list[str] | None = None,
+        crossfade_seconds: int = 0,
         parent: QWidget | None = None,
     ):
         super().__init__(parent)
@@ -445,6 +446,7 @@ class SettingsDialog(QDialog):
         self.spectrum_enabled = spectrum_enabled and spectrum_available
         self.crt_mode = crt_mode if crt_mode in CRT_MODES else "off"
         self.blacklist = list(blacklist or [])
+        self.crossfade_seconds = max(0, min(12, int(crossfade_seconds)))
         self.setWindowTitle(tr("settings_title"))
         self.setModal(True)
         self.setMinimumWidth(560)
@@ -530,6 +532,19 @@ class SettingsDialog(QDialog):
             lambda _index: _fit_combo(self.crt_combo)
         )
         layout.addWidget(self.crt_combo)
+
+        crossfade_label = QLabel(tr("crossfade"))
+        crossfade_label.setObjectName("small")
+        layout.addWidget(crossfade_label)
+
+        self.crossfade_spin = QSpinBox()
+        self.crossfade_spin.setRange(0, 12)
+        self.crossfade_spin.setSuffix(" s")
+        self.crossfade_spin.setSpecialValueText(tr("crossfade_off"))
+        self.crossfade_spin.setValue(self.crossfade_seconds)
+        self.crossfade_spin.setFocusPolicy(Qt.FocusPolicy.NoFocus)
+        self.crossfade_spin.setFixedWidth(160)
+        layout.addWidget(self.crossfade_spin)
 
         self.hide_check = QCheckBox(tr("hide_library"))
         self.hide_check.setChecked(library_hidden)
@@ -630,6 +645,7 @@ class SettingsDialog(QDialog):
         key = self.lyrics_combo.currentData()
         if key:
             self.lyrics_effect = str(key)
+        self.crossfade_seconds = int(self.crossfade_spin.value())
         self.accept()
 
 

@@ -2105,6 +2105,25 @@ class MainWindow(QMainWindow):
         else:
             self.volume.setValue(self.last_volume or 70)
 
+    def _toggle_shuffle(self) -> None:
+        self.shuffle = not self.shuffle
+        self.shuffle_btn.setChecked(self.shuffle)
+
+    def _cycle_repeat(self) -> None:
+        order = ["off", "all", "one"]
+        self.repeat = order[(order.index(self.repeat) + 1) % len(order)]
+        self.repeat_btn.setChecked(self.repeat != "off")
+        self._update_repeat_button()
+
+    def _update_repeat_button(self) -> None:
+        self.repeat_btn.setIcon(repeat_icon(self.repeat == "one"))
+        key = {
+            "off": "tooltip_repeat_off",
+            "all": "tooltip_repeat_all",
+            "one": "tooltip_repeat_one",
+        }[self.repeat]
+        self.repeat_btn.setToolTip(tr(key))
+
     # ------------------------------------------------------------- favoritos
     def _on_cell_clicked(self, row: int, column: int) -> None:
         if column == 0 and 0 <= row < len(self.visible):
